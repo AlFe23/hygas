@@ -1,0 +1,20 @@
+name: hygas
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pytorch          # CPU build from conda-forge; see note below for GPU
+  - h5py
+  - spyder
+  - matplotlib
+  - gdal=3.8.*
+  - spectral
+  - scikit-learn
+  - pyinstaller
+  - latexcodec
+  - proj
+  - xarray           # no channel prefix; let solver pick a compatible version
+  - pip:
+      - docker       # Docker SDK via pip; Conda 'docker' doesn't exist on Linux
