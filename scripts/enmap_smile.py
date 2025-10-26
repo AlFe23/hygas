@@ -97,7 +97,7 @@ def mean_spectrum(rad_cube, cw_vec):
 def plot_mean_spectrum_ax(ax, cw, spec, title):
     ax.plot(cw, spec, lw=1)
     ax.set_xlabel("Wavelength (nm)")
-    ax.set_ylabel("Radiance (W m$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+    ax.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
     ax.set_title(title)
     ax.grid(alpha=0.3)
 
@@ -189,17 +189,17 @@ def run_vnir_swir_independent(in_dir, vnir_local_band_to_plot=None, swir_local_b
     print(f"[i] VNIR meta: {len(vnir_meta)} bands (CW {vnir_meta[0]['cw_nm']:.2f}–{vnir_meta[-1]['cw_nm']:.2f} nm)")
     print(f"[i] SWIR meta: {len(swir_meta)} bands (CW {swir_meta[0]['cw_nm']:.2f}–{swir_meta[-1]['cw_nm']:.2f} nm)")
 
-    # Read DN cubes
-    vnir_dn = enmap_utils.read_cube_gdal(vnir_path)
-    swir_dn = enmap_utils.read_cube_gdal(swir_path)
+    cube, cw_full, _, _, _, _ = enmap_utils.enmap_read(vnir_path, swir_path, xml_path)
+    rad_full = np.transpose(cube, (2, 0, 1))  # (bands, rows, cols), already in µW cm^-2 sr^-1 nm^-1
 
-    # DN -> Radiance (separate)
-    vnir_rad = enmap_utils.dn_to_radiance(vnir_dn, vnir_meta)
-    swir_rad = enmap_utils.dn_to_radiance(swir_dn, swir_meta)
+    n_vnir = len(vnir_meta)
+    n_swir = len(swir_meta)
+    vnir_rad = rad_full[:n_vnir]
+    swir_rad = rad_full[n_vnir:n_vnir + n_swir]
 
     # Mean spectra
-    cw_vnir = np.array([m['cw_nm'] for m in vnir_meta], dtype=float)
-    cw_swir = np.array([m['cw_nm'] for m in swir_meta], dtype=float)
+    cw_vnir = cw_full[:n_vnir]
+    cw_swir = cw_full[n_vnir:n_vnir + n_swir]
     wl_vnir, mean_vnir = cw_vnir, vnir_rad.reshape(vnir_rad.shape[0], -1).mean(axis=1)
     wl_swir, mean_swir = cw_swir, swir_rad.reshape(swir_rad.shape[0], -1).mean(axis=1)
 

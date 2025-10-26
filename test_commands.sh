@@ -54,3 +54,16 @@ python scripts/main.py \
   --min-wavelength 2150 \
   --max-wavelength 2450 \
   --log-file logs/enmap_batch.log
+
+# Standalone diagnostics
+echo "Running EnMAP smile diagnostic..."
+PYTHONPATH=. python scripts/enmap_smile.py || echo "enmap_smile.py skipped (missing deps?)"
+
+echo "Running EnMAP SNR diagnostic..."
+PYTHONPATH=. python scripts/SNR_enmap.py || echo "SNR_enmap.py skipped (missing deps?)"
+
+echo "Running PRISMA smile diagnostic..."
+PYTHONPATH=. python scripts/prisma_smile.py || echo "prisma_smile.py skipped (missing deps?)"
+
+echo "Running PRISMA SNR diagnostic..."
+PYTHONPATH=. python scripts/SNR_prisma.py || echo "SNR_prisma.py skipped (missing deps?)"

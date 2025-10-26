@@ -142,3 +142,21 @@ PRISMA batch runs also emit `directory_process_report_<timestamp>.txt` summarizi
 - Spectral window and `k` parameters are persisted in the processing report—helpful when comparing runs.
 
 The legacy `scripts/PRISMA/prisma_MF.py` and `scripts/EnMAP/enmap_MF.py` remain callable for backwards compatibility but simply forward into the new CLI. Prefer `scripts/main.py` for all new runs.
+
+## Standalone Smile/SNR Utilities
+
+Beyond the end-to-end pipelines, the repo now ships lightweight analysis scripts useful for quick instrument diagnostics:
+
+- `scripts/enmap_smile.py` – EnMAP-only explorer that reads VNIR/SWIR cubes from GeoTIFF + METADATA and produces mean spectra alongside Δλ and CW/FWHM diagnostics for user-selected local bands (radiance shown in µW·cm⁻²·sr⁻¹·nm⁻¹ to match the LUT convention).
+- `scripts/prisma_smile.py` – PRISMA-focused counterpart that pulls CW/FWHM matrices straight from the Level-1 HE5 (or ZIP) archive and renders the same suite of plots for VNIR/SWIR selections.
+- `scripts/SNR_enmap.py` – homogeneous-area SNR estimator for EnMAP; shares the methodology described in the matched-filter paper (auto mask, diff/high-pass sigma, optional per-column aggregation) and reports radiance in µW·cm⁻²·sr⁻¹·nm⁻¹.
+- `scripts/SNR_prisma.py` – PRISMA-specific SNR estimator that loads radiance cubes via `prisma_utils` (native µW·cm⁻²·sr⁻¹·nm⁻¹ units), handles `.zip` inputs seamlessly, and mirrors the plotting/return structure of the EnMAP variant.
+
+Run them from the repo root so the `scripts.*` imports resolve, e.g.:
+
+```bash
+PYTHONPATH=. python scripts/enmap_smile.py --help  # edit the __main__ block for your scene paths
+PYTHONPATH=. python scripts/SNR_prisma.py
+```
+
+All four scripts share the same plotting style (3×2 grids) and rely on the existing `prisma_utils.py` / `enmap_utils.py` readers, so any improvements to the satellite helpers automatically benefit both the operational pipelines and these diagnostics.
