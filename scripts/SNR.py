@@ -17,7 +17,8 @@ This follows the EnMAP/PRISMA paper methodology:
   - (Optionally) scale SNR to other scenes with sqrt(L/L_ref).
 
 Requirements:
- - enmap_smile.py (helpers for file discovery, metadata parsing, DN→radiance)
+ - scripts.satellites.enmap_utils (file discovery, metadata parsing, DN→radiance)
+ - scripts.core.targets (band/window helpers)
  - numpy, matplotlib
  - scipy.ndimage (for Gaussian blur & morphology)
  - scikit-image (optional; only for Sobel edge; code falls back if absent)
@@ -26,12 +27,12 @@ Author: you :)
 """
 
 import os
-import numpy as np
-import matplotlib.pyplot as plt
 
-from enmap_smile import (
-    find_enmap_files, parse_metadata_vnir_swir, read_cube_gdal, dn_to_radiance
-)
+import matplotlib.pyplot as plt
+import numpy as np
+
+from scripts.core import targets
+from scripts.satellites import enmap_utils
 
 # Optional: scikit-image for Sobel (edge magnitude)
 try:
@@ -71,17 +72,6 @@ def convert_radiance_units(L_mean, unit):
     else:
         raise ValueError("radiance_unit must be one of: "
                          "'W_m2_sr_nm', 'uW_cm2_sr_nm', 'W_m2_sr_um'.")
-
-
-# ------------------------------
-# band selection
-# ------------------------------
-def band_selector(cw_nm, window_nm=None):
-    cw = np.asarray(cw_nm, dtype=float)
-    if window_nm is None:
-        return np.ones_like(cw, dtype=bool)
-    lo, hi = window_nm
-    return (cw >= lo) & (cw <= hi)
 
 
 # ------------------------------
@@ -340,22 +330,27 @@ def run_snr_homogeneous(
     """
     Compute SNR over a homogeneous area for VNIR or SWIR.
     """
-    vnir_path, swir_path, xml_path = find_enmap_files(in_dir)
-    vnir_meta, swir_meta = parse_metadata_vnir_swir(xml_path)
+    vnir_path, swir_path, xml_path = enmap_utils.find_enmap_files(in_dir)
+    vnir_meta, swir_meta = enmap_utils.parse_metadata_vnir_swir(xml_path)
 
     if sensor.upper() == "VNIR":
-        dn = read_cube_gdal(vnir_path)
-        rad = dn_to_radiance(dn, vnir_meta)  # -> [W m^-2 sr^-1 nm^-1]
+        dn = enmap_utils.read_cube_gdal(vnir_path)
+        rad = enmap_utils.dn_to_radiance(dn, vnir_meta)  # -> [W m^-2 sr^-1 nm^-1]
         cw = np.array([m['cw_nm'] for m in vnir_meta], dtype=float)
         sens_label = "VNIR"
     else:
-        dn = read_cube_gdal(swir_path)
-        rad = dn_to_radiance(dn, swir_meta)
+        dn = enmap_utils.read_cube_gdal(swir_path)
+        rad = enmap_utils.dn_to_radiance(dn, swir_meta)
         cw = np.array([m['cw_nm'] for m in swir_meta], dtype=float)
         sens_label = "SWIR"
 
     # select methane window (or all)
-    sel = band_selector(cw, window_nm)
+    if window_nm is None:
+        sel = np.ones_like(cw, dtype=bool)
+    else:
+        idx = targets.select_band_indices(cw, window_nm[0], window_nm[1])
+        sel = np.zeros_like(cw, dtype=bool)
+        sel[idx] = True
     rad_win = rad[sel]
     cw_win = cw[sel]
 
@@ -400,7 +395,11 @@ def run_snr_homogeneous(
 # example
 # ------------------------------
 if __name__ == "__main__":
-    main_dir = r"D:\Lavoro\Assegno_Ricerca_Sapienza\CLEAR_UP\CH4_detection\SNR\codes\test_data\20221002T074828\L1B-DT0000004147_20221002T074828Z_001_V010501_20241110T222720Z"
+    main_dir = (
+        "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/codes/"
+        "test_data/20221002T074828/"
+        "L1B-DT0000004147_20221002T074828Z_001_V010501_20241110T222720Z"
+    )
 
     out = run_snr_homogeneous(
         in_dir=main_dir,

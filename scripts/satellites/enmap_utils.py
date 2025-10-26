@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-EnMAP-specific utilities: GeoTIFF readers, metadata parsing, export helpers,
-and folder discovery. Original comments and behaviour are preserved.
+EnMAP-specific utilities shared across the matched-filter pipelines and the
+analysis scripts (smile/SNR). This module now gathers all generic helpers so
+callers can avoid re-implementing file discovery, cube reading, metadata
+parsing, and DN→radiance conversion.
 """
 
+import glob
 import os
 import re
 from datetime import datetime, timezone
@@ -13,6 +16,169 @@ import numpy as np
 from osgeo import gdal
 
 gdal.UseExceptions()
+
+
+################################################################################
+# Generic XML helpers
+################################################################################
+
+
+def strip_namespaces(root):
+    """Remove namespaces so downstream find() calls can use simple tag names."""
+
+    for el in root.iter():
+        if "}" in el.tag:
+            el.tag = el.tag.split("}", 1)[1]
+    return root
+
+
+################################################################################
+# File discovery / GDAL readers
+################################################################################
+
+
+def find_enmap_files(in_dir):
+    """Locate VNIR, SWIR GeoTIFFs and METADATA.XML in a folder."""
+
+    vnir = sorted(glob.glob(os.path.join(in_dir, "*SPECTRAL_IMAGE_VNIR*.TIF"))) or sorted(
+        glob.glob(os.path.join(in_dir, "*VNIR*.TIF"))
+    )
+    swir = sorted(glob.glob(os.path.join(in_dir, "*SPECTRAL_IMAGE_SWIR*.TIF"))) or sorted(
+        glob.glob(os.path.join(in_dir, "*SWIR*.TIF"))
+    )
+    xml = sorted(glob.glob(os.path.join(in_dir, "*METADATA.XML")))
+
+    if not vnir or not swir or not xml:
+        raise FileNotFoundError("VNIR/SWIR TIF or METADATA.XML not found in directory")
+
+    return vnir[0], swir[0], xml[0]
+
+
+def read_cube_gdal(path_tif):
+    """Read multi-band GeoTIFF into (bands, rows, cols) float32 array of DN."""
+
+    ds = gdal.Open(path_tif, gdal.GA_ReadOnly)
+    if ds is None:
+        raise RuntimeError(f"Cannot open {path_tif}")
+
+    bands, rows, cols = ds.RasterCount, ds.RasterYSize, ds.RasterXSize
+    arr = np.empty((bands, rows, cols), dtype=np.float32)
+    for b in range(1, bands + 1):
+        arr[b - 1] = ds.GetRasterBand(b).ReadAsArray().astype(np.float32)
+    ds = None
+    return arr
+
+
+################################################################################
+# Metadata parsing & radiance conversion
+################################################################################
+
+
+def parse_metadata_vnir_swir(xml_path):
+    """Parse METADATA.XML and return VNIR and SWIR band lists with local indices."""
+
+    root = ET.parse(xml_path).getroot()
+    strip_namespaces(root)
+
+    global_bands = []
+    for bn in root.findall(".//bandCharacterisation/bandID"):
+        gid = int(bn.attrib["number"])
+        global_bands.append(
+            {
+                "global_id": gid,
+                "cw_nm": float(bn.findtext("wavelengthCenterOfBand")),
+                "fwhm_nm": float(bn.findtext("FWHMOfBand")),
+                "gain": float(bn.findtext("GainOfBand")),
+                "offset": float(bn.findtext("OffsetOfBand")),
+            }
+        )
+    global_bands.sort(key=lambda d: d["global_id"])
+
+    smile = root.find(".//smileCorrection")
+    if smile is None:
+        raise RuntimeError("smileCorrection not found in metadata.")
+
+    vnir_smile = smile.find("VNIR")
+    swir_smile = smile.find("SWIR")
+    if vnir_smile is None or swir_smile is None:
+        raise RuntimeError("Expected <smileCorrection><VNIR> and <SWIR> subsections.")
+
+    def _read_smile_section(sec):
+        coeffs_by_local = {}
+        wl_by_local = {}
+        for bn in sec.findall(".//bandID"):
+            local_idx = int(bn.attrib["number"])
+            coeffs = []
+            for k in range(5):
+                txt = bn.findtext(f"coeff{k}")
+                if txt is None:
+                    coeffs = []
+                    break
+                coeffs.append(float(txt))
+            if len(coeffs) == 5:
+                coeffs_by_local[local_idx] = np.array(coeffs, dtype=float)
+            wtxt = bn.findtext("wavelength")
+            if wtxt is not None:
+                wl_by_local[local_idx] = float(wtxt)
+        return coeffs_by_local, wl_by_local
+
+    vnir_coeffs_by_local, vnir_wl_smile = _read_smile_section(vnir_smile)
+    swir_coeffs_by_local, swir_wl_smile = _read_smile_section(swir_smile)
+
+    Nvnir = len(vnir_coeffs_by_local)
+    Nswir = len(swir_coeffs_by_local)
+    if Nvnir + Nswir != len(global_bands):
+        print(
+            f"[w] NVNIR({Nvnir}) + NSWIR({Nswir}) != Ntotal({len(global_bands)}). Proceeding with slice by counts."
+        )
+
+    vnir_global = global_bands[:Nvnir]
+    swir_global = global_bands[Nvnir : Nvnir + Nswir]
+
+    vnir_meta = []
+    for i, gb in enumerate(vnir_global, start=1):
+        meta = dict(gb)
+        meta["smile_coeffs"] = vnir_coeffs_by_local.get(i)
+        meta["local_idx"] = i
+        vnir_meta.append(meta)
+
+    swir_meta = []
+    for i, gb in enumerate(swir_global, start=1):
+        meta = dict(gb)
+        meta["smile_coeffs"] = swir_coeffs_by_local.get(i)
+        meta["local_idx"] = i
+        swir_meta.append(meta)
+
+    def _check_alignment(meta_list, wl_dict, label):
+        diffs = []
+        for m in meta_list:
+            li = m["local_idx"]
+            if li in wl_dict:
+                diffs.append(abs(m["cw_nm"] - wl_dict[li]))
+        if diffs:
+            dmax = max(diffs)
+            if dmax > 0.5:
+                print(f"[w] Max |CW_meta - wavelength_smile| in {label}: {dmax:.3f} nm")
+
+    _check_alignment(vnir_meta, vnir_wl_smile, "VNIR")
+    _check_alignment(swir_meta, swir_wl_smile, "SWIR")
+
+    return vnir_meta, swir_meta
+
+
+def dn_to_radiance(dn_cube, meta_list):
+    """Radiance = gain*DN + offset per band for VNIR or SWIR cubes."""
+
+    nb = dn_cube.shape[0]
+    if nb != len(meta_list):
+        print(f"[w] DN bands={nb} vs metadata={len(meta_list)}")
+    nb = min(nb, len(meta_list))
+    rad = np.empty_like(dn_cube[:nb], dtype=np.float32)
+    for i in range(nb):
+        g = meta_list[i]["gain"]
+        o = meta_list[i]["offset"]
+        rad[i] = g * dn_cube[i] + o
+    return rad
 
 
 def enmap_read(vnir_file, swir_file, metadata_file):
@@ -32,45 +198,31 @@ def enmap_read(vnir_file, swir_file, metadata_file):
     - latitude: Latitude array (if available).
     - longitude: Longitude array (if available).
     """
-    # Read VNIR data cube
-    vnir_dataset = gdal.Open(vnir_file)
-    vnir_cube_DN = vnir_dataset.ReadAsArray()  # Shape: (bands, rows, cols)
-    vnir_cube_DN = np.transpose(vnir_cube_DN, (1, 2, 0))  # Shape: (rows, cols, bands)
+    # Read DN cubes (bands, rows, cols)
+    vnir_cube_dn = read_cube_gdal(vnir_file)
+    swir_cube_dn = read_cube_gdal(swir_file)
 
-    # Read SWIR data cube
-    swir_dataset = gdal.Open(swir_file)
-    swir_cube_DN = swir_dataset.ReadAsArray()
-    swir_cube_DN = np.transpose(swir_cube_DN, (1, 2, 0))
+    vnir_meta, swir_meta = parse_metadata_vnir_swir(metadata_file)
 
-    # Read metadata from XML file
-    tree = ET.parse(metadata_file)
-    root = tree.getroot()
+    # Convert DN -> radiance using shared helper (still [B,R,C])
+    vnir_rad = dn_to_radiance(vnir_cube_dn, vnir_meta)
+    swir_rad = dn_to_radiance(swir_cube_dn, swir_meta)
 
-    # Extract Gain, Offset, CW, and FWHM for each band
-    band_info = []
-    # Adjust the XPath according to the XML structure
-    for band in root.findall(".//specific/bandCharacterisation/bandID"):
-        band_number = int(band.get("number"))
-        wavelength_center = float(band.find("wavelengthCenterOfBand").text)
-        fwhm = float(band.find("FWHMOfBand").text)
-        gain = float(band.find("GainOfBand").text)
-        offset = float(band.find("OffsetOfBand").text)
-        band_info.append(
-            {
-                "number": band_number,
-                "wavelength_center": wavelength_center,
-                "fwhm": fwhm,
-                "gain": gain,
-                "offset": offset,
-            }
-        )
-
-    # Sort band_info by band number
-    band_info.sort(key=lambda x: x["number"])
+    # Build metadata table for downstream use (global ordering)
+    band_info = [
+        {
+            "number": meta["global_id"],
+            "wavelength_center": meta["cw_nm"],
+            "fwhm": meta["fwhm_nm"],
+            "gain": meta["gain"],
+            "offset": meta["offset"],
+        }
+        for meta in (*vnir_meta, *swir_meta)
+    ]
 
     # Ensure the number of bands matches the data cubes
-    num_vnir_bands = vnir_cube_DN.shape[2]
-    num_swir_bands = swir_cube_DN.shape[2]
+    num_vnir_bands = vnir_rad.shape[0]
+    num_swir_bands = swir_rad.shape[0]
     total_bands = num_vnir_bands + num_swir_bands
 
     if len(band_info) != total_bands:
@@ -78,27 +230,9 @@ def enmap_read(vnir_file, swir_file, metadata_file):
             f"Warning: Number of bands in metadata ({len(band_info)}) does not match total bands in data cubes ({total_bands})"
         )
 
-    vnir_band_info = band_info[:num_vnir_bands]
-    swir_band_info = band_info[num_vnir_bands:]
-
-    # Apply radiance conversion: Radiance = Gain * DN + Offset
-    # Ensure DN data is in float32 to prevent overflow/underflow
-    vnir_cube_DN = vnir_cube_DN.astype(np.float32)
-    swir_cube_DN = swir_cube_DN.astype(np.float32)
-
-    # VNIR
-    vnir_radiance = np.zeros_like(vnir_cube_DN, dtype=np.float32)
-    for i, band in enumerate(vnir_band_info):
-        gain = band["gain"]
-        offset = band["offset"]
-        vnir_radiance[:, :, i] = vnir_cube_DN[:, :, i] * gain + offset
-
-    # SWIR
-    swir_radiance = np.zeros_like(swir_cube_DN, dtype=np.float32)
-    for i, band in enumerate(swir_band_info):
-        gain = band["gain"]
-        offset = band["offset"]
-        swir_radiance[:, :, i] = swir_cube_DN[:, :, i] * gain + offset
+    # Reorder cubes to (rows, cols, bands)
+    vnir_radiance = np.transpose(vnir_rad, (1, 2, 0)).astype(np.float32)
+    swir_radiance = np.transpose(swir_rad, (1, 2, 0)).astype(np.float32)
 
     # Convert radiance units from [W/(sr*nm*m^2)] to [μW/(sr*nm*cm^2)]
     vnir_radiance *= 1e2
@@ -355,4 +489,3 @@ def derive_basename_from_metadata(metadata_file: str) -> str:
     tile = m_tile.group(1) if m_tile else "000"
 
     return f"{level}_{datatake}_{tile}_{start_z}_{stop_z}"
-
