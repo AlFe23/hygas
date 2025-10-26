@@ -1,0 +1,358 @@
+# -*- coding: utf-8 -*-
+"""
+EnMAP-specific utilities: GeoTIFF readers, metadata parsing, export helpers,
+and folder discovery. Original comments and behaviour are preserved.
+"""
+
+import os
+import re
+from datetime import datetime, timezone
+import xml.etree.ElementTree as ET
+
+import numpy as np
+from osgeo import gdal
+
+gdal.UseExceptions()
+
+
+def enmap_read(vnir_file, swir_file, metadata_file):
+    """
+    Reads EnMAP VNIR and SWIR data cubes and associated metadata.
+
+    Parameters:
+    - vnir_file: Path to the VNIR GeoTIFF file.
+    - swir_file: Path to the SWIR GeoTIFF file.
+    - metadata_file: Path to the XML metadata file.
+
+    Returns:
+    - concatenated_cube: Combined VNIR and SWIR radiance data cube in BIP format.
+    - concatenated_cw: Central wavelengths for each band.
+    - concatenated_fwhm: FWHM for each band.
+    - rgb_image: RGB image created from the radiance data.
+    - latitude: Latitude array (if available).
+    - longitude: Longitude array (if available).
+    """
+    # Read VNIR data cube
+    vnir_dataset = gdal.Open(vnir_file)
+    vnir_cube_DN = vnir_dataset.ReadAsArray()  # Shape: (bands, rows, cols)
+    vnir_cube_DN = np.transpose(vnir_cube_DN, (1, 2, 0))  # Shape: (rows, cols, bands)
+
+    # Read SWIR data cube
+    swir_dataset = gdal.Open(swir_file)
+    swir_cube_DN = swir_dataset.ReadAsArray()
+    swir_cube_DN = np.transpose(swir_cube_DN, (1, 2, 0))
+
+    # Read metadata from XML file
+    tree = ET.parse(metadata_file)
+    root = tree.getroot()
+
+    # Extract Gain, Offset, CW, and FWHM for each band
+    band_info = []
+    # Adjust the XPath according to the XML structure
+    for band in root.findall(".//specific/bandCharacterisation/bandID"):
+        band_number = int(band.get("number"))
+        wavelength_center = float(band.find("wavelengthCenterOfBand").text)
+        fwhm = float(band.find("FWHMOfBand").text)
+        gain = float(band.find("GainOfBand").text)
+        offset = float(band.find("OffsetOfBand").text)
+        band_info.append(
+            {
+                "number": band_number,
+                "wavelength_center": wavelength_center,
+                "fwhm": fwhm,
+                "gain": gain,
+                "offset": offset,
+            }
+        )
+
+    # Sort band_info by band number
+    band_info.sort(key=lambda x: x["number"])
+
+    # Ensure the number of bands matches the data cubes
+    num_vnir_bands = vnir_cube_DN.shape[2]
+    num_swir_bands = swir_cube_DN.shape[2]
+    total_bands = num_vnir_bands + num_swir_bands
+
+    if len(band_info) != total_bands:
+        print(
+            f"Warning: Number of bands in metadata ({len(band_info)}) does not match total bands in data cubes ({total_bands})"
+        )
+
+    vnir_band_info = band_info[:num_vnir_bands]
+    swir_band_info = band_info[num_vnir_bands:]
+
+    # Apply radiance conversion: Radiance = Gain * DN + Offset
+    # Ensure DN data is in float32 to prevent overflow/underflow
+    vnir_cube_DN = vnir_cube_DN.astype(np.float32)
+    swir_cube_DN = swir_cube_DN.astype(np.float32)
+
+    # VNIR
+    vnir_radiance = np.zeros_like(vnir_cube_DN, dtype=np.float32)
+    for i, band in enumerate(vnir_band_info):
+        gain = band["gain"]
+        offset = band["offset"]
+        vnir_radiance[:, :, i] = vnir_cube_DN[:, :, i] * gain + offset
+
+    # SWIR
+    swir_radiance = np.zeros_like(swir_cube_DN, dtype=np.float32)
+    for i, band in enumerate(swir_band_info):
+        gain = band["gain"]
+        offset = band["offset"]
+        swir_radiance[:, :, i] = swir_cube_DN[:, :, i] * gain + offset
+
+    # Convert radiance units from [W/(sr*nm*m^2)] to [μW/(sr*nm*cm^2)]
+    vnir_radiance *= 1e2
+    swir_radiance *= 1e2
+
+    # Concatenate VNIR and SWIR radiance cubes
+    concatenated_cube = np.concatenate((vnir_radiance, swir_radiance), axis=2)
+
+    # Collect CW and FWHM
+    concatenated_cw = np.array([band["wavelength_center"] for band in band_info])
+    concatenated_fwhm = np.array([band["fwhm"] for band in band_info])
+
+    # Create an RGB image for visualization (bands near 650/550/450 nm)
+    red_wavelength = 650
+    green_wavelength = 550
+    blue_wavelength = 450
+
+    red_band_idx = np.argmin(np.abs(concatenated_cw - red_wavelength))
+    green_band_idx = np.argmin(np.abs(concatenated_cw - green_wavelength))
+    blue_band_idx = np.argmin(np.abs(concatenated_cw - blue_wavelength))
+
+    red_band = concatenated_cube[:, :, red_band_idx]
+    green_band = concatenated_cube[:, :, green_band_idx]
+    blue_band = concatenated_cube[:, :, blue_band_idx]
+
+    red_norm = (red_band - red_band.min()) / (red_band.max() - red_band.min())
+    green_norm = (green_band - green_band.min()) / (green_band.max() - green_band.min())
+    blue_norm = (blue_band - blue_band.min()) / (blue_band.max() - blue_band.min())
+
+    rgb_image = np.stack((red_norm, green_norm, blue_norm), axis=-1)
+
+    # Latitude and Longitude arrays can be extracted if available (EnMAP provides geolocation)
+    # For now, we set them to None
+    latitude = None
+    longitude = None
+
+    return concatenated_cube, concatenated_cw, concatenated_fwhm, rgb_image, latitude, longitude
+
+
+def enmap_metadata_read(metadata_file):
+    """
+    Reads SZA and mean WV from EnMAP metadata XML file.
+
+    Parameters:
+    - metadata_file: Path to the XML metadata file.
+
+    Returns:
+    - SZA: Solar Zenith Angle in degrees.
+    - meanWV: Mean Water Vapor in g/cm^2.
+    """
+    tree = ET.parse(metadata_file)
+    root = tree.getroot()
+
+    # Extract SZA
+    sza_elem = root.find(".//specific/qualityFlag/sceneSZA")
+    if sza_elem is not None and sza_elem.text is not None:
+        SZA = float(sza_elem.text)
+    else:
+        raise ValueError("Solar Zenith Angle (sceneSZA) not found in metadata.")
+
+    # Extract mean WV
+    wv_elem = root.find(".//specific/qualityFlag/sceneWV")
+    if wv_elem is not None and wv_elem.text is not None:
+        scene_wv = float(wv_elem.text)
+        meanWV = scene_wv / 1000  # Convert from [cm * 1000] to [cm]
+    else:
+        raise ValueError("Mean Water Vapor (sceneWV) not found in metadata.")
+
+    # Alternatively, extract meanGroundElevation
+    mean_ground_elevation_elem = root.find(".//specific/meanGroundElevation")
+    if mean_ground_elevation_elem is not None and mean_ground_elevation_elem.text is not None:
+        mean_ground_elevation = float(mean_ground_elevation_elem.text)
+    else:
+        print("Warning: meanGroundElevation not found in metadata.")
+        mean_ground_elevation = None  # Handle appropriately
+
+    print(f"Sun Zenith Angle (degrees): {SZA}")
+    print(f"Mean Water Vapor (g/cm^2): {meanWV}")
+    print(f"Mean Ground Elevation (m): {mean_ground_elevation}")
+
+    return SZA, meanWV, mean_ground_elevation
+
+
+def save_as_geotiff_single_band_enmap(data, output_file, reference_dataset):
+    """
+    Saves a single-band array as a GeoTIFF file with EnMAP georeferencing.
+    Robust version: closes all handles, uses compression, BigTIFF if safer,
+    and guarantees Float32 + NoData.
+    """
+    # Ensure 2D float32 and replace non-finite
+    arr = np.asarray(data, dtype=np.float32)
+    nodata_value = np.float32(-9999.0)
+    np.copyto(arr, nodata_value, where=~np.isfinite(arr))
+
+    # Dimensions from reference
+    xsize = reference_dataset.RasterXSize
+    ysize = reference_dataset.RasterYSize
+    if arr.shape != (ysize, xsize):
+        raise ValueError(f"Array shape {arr.shape} does not match reference raster size {(ysize, xsize)}")
+
+    # Creation options: tiled, compressed, BigTIFF if needed
+    driver = gdal.GetDriverByName("GTiff")
+    opts = [
+        "TILED=YES",
+        "COMPRESS=LZW",
+        "BIGTIFF=IF_SAFER",  # avoids >4GB classic-TIFF issues
+        "BLOCKXSIZE=256",
+        "BLOCKYSIZE=256",
+    ]
+    ds = driver.Create(output_file, xsize, ysize, 1, gdal.GDT_Float32, options=opts)
+    if ds is None:
+        raise RuntimeError(f"Could not create {output_file}")
+
+    # GeoTransform / Projection
+    ds.SetGeoTransform(reference_dataset.GetGeoTransform())
+    ds.SetProjection(reference_dataset.GetProjection())
+
+    # Write band + NoData
+    band1 = ds.GetRasterBand(1)
+    band1.WriteArray(arr)
+    band1.SetNoDataValue(float(nodata_value))
+    band1.FlushCache()
+    band1 = None  # CRITICAL: release band handle
+
+    # Flush and close
+    ds.FlushCache()
+    ds = None  # CRITICAL: release dataset handle
+
+
+def save_as_geotiff_rgb_enmap(rgb_data, output_file, reference_dataset):
+    """
+    Saves an RGB array as a GeoTIFF with EnMAP georeferencing.
+    """
+    # Scale and convert to uint8
+    rgb = np.clip(rgb_data * 255.0, 0, 255).astype(np.uint8)
+
+    ysize, xsize, bands = rgb.shape
+    if bands != 3:
+        raise ValueError("RGB array must have 3 bands")
+
+    driver = gdal.GetDriverByName("GTiff")
+    opts = [
+        "TILED=YES",
+        "COMPRESS=LZW",
+        "BIGTIFF=IF_SAFER",
+        "BLOCKXSIZE=256",
+        "BLOCKYSIZE=256",
+    ]
+    ds = driver.Create(output_file, xsize, ysize, 3, gdal.GDT_Byte, options=opts)
+    if ds is None:
+        raise RuntimeError(f"Could not create {output_file}")
+
+    ds.SetGeoTransform(reference_dataset.GetGeoTransform())
+    ds.SetProjection(reference_dataset.GetProjection())
+
+    # Write bands and set color interpretation
+    for i, interp in enumerate([gdal.GCI_RedBand, gdal.GCI_GreenBand, gdal.GCI_BlueBand], start=1):
+        b = ds.GetRasterBand(i)
+        b.WriteArray(rgb[:, :, i - 1])
+        b.SetColorInterpretation(interp)
+        b.FlushCache()
+        b = None  # CRITICAL
+
+    ds.FlushCache()
+    ds = None  # CRITICAL
+
+
+def extract_enmap_files_from_folder(folder_path):
+    """
+    Identify the VNIR, SWIR, and METADATA files in the given folder.
+    Returns (vnir_file, swir_file, metadata_file) or (None, None, None) if not found.
+    """
+    vnir_file = None
+    swir_file = None
+    metadata_file = None
+
+    for file in os.listdir(folder_path):
+        if file.endswith("SPECTRAL_IMAGE_VNIR.TIF"):
+            vnir_file = os.path.join(folder_path, file)
+        elif file.endswith("SPECTRAL_IMAGE_SWIR.TIF"):
+            swir_file = os.path.join(folder_path, file)
+        elif file.endswith("METADATA.XML"):
+            metadata_file = os.path.join(folder_path, file)
+
+    return vnir_file, swir_file, metadata_file
+
+
+def derive_output_basename(vnir_file):
+    """
+    Derive a simplified output basename from the VNIR file name.
+    For example:
+    ENMAP01-____L1B-DT0000090108_20240112T144653Z_002_V010401_...-SPECTRAL_IMAGE_VNIR.TIF
+    -> L1B_20240112T144653Z
+    """
+    base = os.path.basename(vnir_file)
+    parts = base.split("_")
+    product_level = "L1B"
+    date_str = parts[1]  # The date/time string
+    output_basename = f"{product_level}_{date_str}"
+    return output_basename
+
+
+def _to_yyyymmddThhmmssZ(dt_text: str) -> str:
+    """
+    Normalize an EnMAP time string like '2025-06-23T11:01:29.036499Z'
+    to 'YYYYMMDDTHHMMSSZ' with seconds precision.
+    """
+    t = dt_text.strip()
+    assert t.endswith("Z"), f"Expected Zulu time, got: {dt_text}"
+    t_noz = t[:-1]
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            dt = datetime.strptime(t_noz, fmt).replace(tzinfo=timezone.utc)
+            break
+        except ValueError:
+            dt = None
+    if dt is None:
+        raise ValueError(f"Unrecognized datetime format: {dt_text}")
+    return dt.strftime("%Y%m%dT%H%M%SZ")
+
+
+def _first_text(elem, path):
+    e = elem.find(path)
+    return e.text.strip() if (e is not None and e.text) else None
+
+
+def derive_basename_from_metadata(metadata_file: str) -> str:
+    """
+    Build a compact, informative basename using the METADATA.XML file:
+      <level>_<datatake>_<tile>_<start>_<stop>
+
+    Example: L1B_DT0000137438_010_20250623T110129Z_20250623T110133Z
+    """
+    tree = ET.parse(metadata_file)
+    root = tree.getroot()
+
+    # Level (processing level)
+    level = _first_text(root, ".//metadata/schema/processingLevel") or _first_text(root, ".//base/level") or "L1B"
+
+    # temporal coverage start/stop
+    start_raw = _first_text(root, ".//base/temporalCoverage/startTime")
+    stop_raw = _first_text(root, ".//base/temporalCoverage/stopTime")
+    if not start_raw or not stop_raw:
+        raise ValueError("startTime/stopTime not found in METADATA.XML")
+
+    start_z = _to_yyyymmddThhmmssZ(start_raw)
+    stop_z = _to_yyyymmddThhmmssZ(stop_raw)
+
+    # Datatake + tile via product name
+    name_txt = _first_text(root, ".//metadata/name") or ""
+    m_dt = re.search(r"(DT\d{10,})", name_txt)  # DT + at least 10 digits
+    m_tile = re.search(r"_(\d{3})_", name_txt)
+    datatake = m_dt.group(1) if m_dt else "DTUNKNOWN"
+    tile = m_tile.group(1) if m_tile else "000"
+
+    return f"{level}_{datatake}_{tile}_{start_z}_{stop_z}"
+

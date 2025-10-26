@@ -16,3 +16,6 @@ pytest_cache/
 htmlcov/
 .cache/
 .ipynb_checkpoints/
+
+/test_data
+/logs
