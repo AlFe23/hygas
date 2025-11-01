@@ -9,8 +9,10 @@ dependencies:
   - h5py
   - spyder
   - matplotlib
+  - numpy
   - gdal=3.8.*
   - spectral
+  - scipy
   - scikit-learn
   - scikit-image
   - pyinstaller

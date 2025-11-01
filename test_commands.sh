@@ -55,7 +55,17 @@ python scripts/main.py \
   --max-wavelength 2450 \
   --log-file logs/enmap_batch.log
 
-# Standalone diagnostics
+echo "Running EnMAP batch test..."
+python scripts/main.py \
+  --satellite enmap --mode batch \
+  --root-directory /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/EnMAP_calibration_data/Roger_et_al_EnMAP_data \
+  --lut /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/LUTs/CH4_lut.hdf5 \
+  --k 1 \
+  --min-wavelength 2150 \
+  --max-wavelength 2450 \
+  --log-file logs/enmap_batch.log
+
+# Standalone Radiometric diagnostics
 echo "Running EnMAP smile diagnostic..."
 PYTHONPATH=. python scripts/enmap_smile.py || echo "enmap_smile.py skipped (missing deps?)"
 
@@ -69,7 +79,7 @@ echo "Running PRISMA SNR diagnostic..."
 PYTHONPATH=. python scripts/SNR_prisma.py || echo "SNR_prisma.py skipped (missing deps?)"
 
 
-
+# Inspect PRISMA HDF structure
 echo "Inspecting PRISMA HDF structure..."
 python scripts/inspect_prisma_hdf.py \
   "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/PRISMA_calibration_data/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L1_STD_OFFL_20200401085313_20200401085318_0001.zip" \
@@ -83,12 +93,4 @@ python scripts/inspect_prisma_hdf.py \
 
 
 
-echo "Running EnMAP batch test..."
-python scripts/main.py \
-  --satellite enmap --mode batch \
-  --root-directory /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/EnMAP_calibration_data/Roger_et_al_EnMAP_data \
-  --lut /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/LUTs/CH4_lut.hdf5 \
-  --k 1 \
-  --min-wavelength 2150 \
-  --max-wavelength 2450 \
-  --log-file logs/enmap_batch.log
+
