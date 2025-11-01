@@ -151,7 +151,6 @@ Beyond the end-to-end pipelines, the repo now ships lightweight analysis scripts
 - `scripts/prisma_smile.py` – PRISMA-focused counterpart that pulls CW/FWHM matrices straight from the Level-1 HE5 (or ZIP) archive and renders the same suite of plots for VNIR/SWIR selections.
 - `scripts/SNR_enmap.py` – homogeneous-area SNR estimator for EnMAP; shares the methodology described in the matched-filter paper (auto mask, diff/high-pass sigma, optional per-column aggregation) and reports radiance in µW·cm⁻²·sr⁻¹·nm⁻¹.
 - `scripts/SNR_prisma.py` – PRISMA-specific SNR estimator that loads radiance cubes via `prisma_utils` (native µW·cm⁻²·sr⁻¹·nm⁻¹ units), handles `.zip` inputs seamlessly, and mirrors the plotting/return structure of the EnMAP variant.
-
 Run them from the repo root so the `scripts.*` imports resolve, e.g.:
 
 ```bash
@@ -159,4 +158,27 @@ PYTHONPATH=. python scripts/enmap_smile.py --help  # edit the __main__ block for
 PYTHONPATH=. python scripts/SNR_prisma.py
 ```
 
-All four scripts share the same plotting style (3×2 grids) and rely on the existing `prisma_utils.py` / `enmap_utils.py` readers, so any improvements to the satellite helpers automatically benefit both the operational pipelines and these diagnostics.
+The four plotting-oriented utilities share the same 3×2 layout and rely on the existing `prisma_utils.py` / `enmap_utils.py` readers, so any improvements to the satellite helpers automatically benefit both the operational pipelines and these diagnostics.
+
+## PRISMA HDF Exploration
+
+Use `scripts/inspect_prisma_hdf.py` to explore the hierarchy of a Level-1 or Level-2C PRISMA product without leaving the terminal. The tool accepts both `.he5` files and the official ZIP archives, automatically extracting the embedded HE5 to a temporary directory when needed.
+
+- Tree view (optionally capped by depth and including attributes):
+
+  ```bash
+  python scripts/inspect_prisma_hdf.py \
+    test_data/prisma/20240911071151/PRS_L2C_STD_20240911071151_20240911071155_0001.zip \
+    --max-depth 2 --attrs
+  ```
+
+- Focus on a specific dataset or group with a quick preview of numeric values:
+
+  ```bash
+  python scripts/inspect_prisma_hdf.py \
+    test_data/prisma/20240911071151/PRS_L2C_STD_20240911071151_20240911071155_0001.zip \
+    --path "HDFEOS/SWATHS/PRS_L2C_WVM/Data Fields/WVM_Map" \
+    --preview 5 --attrs
+  ```
+
+Append `--output /path/to/report.txt` to save the listing to disk in addition to printing it on screen. `--path` accepts any HDF dataset/group path, `--preview` limits how many numeric values are sampled (the script only reads a thin block to avoid loading whole cubes), and `--max-members` caps how many children are listed when inspecting a group.

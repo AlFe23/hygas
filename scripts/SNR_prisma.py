@@ -54,6 +54,22 @@ def _resolve_l1_path(l1_path: str) -> str:
     return path
 
 
+def _resolve_l2c_path(l2c_path: str | None) -> str | None:
+    """Resolve PRISMA L2C path, extracting from ZIP when provided."""
+
+    if l2c_path is None:
+        return None
+    path = os.path.abspath(l2c_path)
+    if path.lower().endswith(".zip"):
+        extracted = prisma_utils.extract_he5_from_zip(path, os.path.dirname(path))
+        if extracted is None:
+            raise FileNotFoundError(
+                f"Could not locate a .he5 file inside ZIP {path}. Ensure the archive is valid."
+            )
+        return extracted
+    return path
+
+
 # ------------------------------
 # plotting helpers
 # ------------------------------
@@ -225,7 +241,7 @@ def compute_snr_per_column(rad_cube, cw_nm, mask_bool, sigma_mode="diff", hp_kxy
 # ------------------------------
 
 
-def plot_radiance_and_snr(cw_nm, L_mean, SNR, title="Homogeneous-area SNR"):
+def plot_radiance_and_snr(cw_nm, L_mean, SNR, title="Homogeneous-area SNR", metadata_lines=None):
     L_plot = convert_to_aviris_units(L_mean)
 
     fig, ax1 = plt.subplots(figsize=(10, 4.8))
@@ -240,8 +256,14 @@ def plot_radiance_and_snr(cw_nm, L_mean, SNR, title="Homogeneous-area SNR"):
     ax2.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)", color="C1")
     ax2.tick_params(axis="y", labelcolor="C1")
 
-    fig.suptitle(f"{title}\n(radiance in µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)", fontsize=10)
-    fig.tight_layout()
+    header = f"{title}\n(radiance in µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)"
+    if metadata_lines:
+        header = header + "\n" + "\n".join(metadata_lines)
+        fig.suptitle(header, fontsize=10)
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+    else:
+        fig.suptitle(header, fontsize=10)
+        fig.tight_layout()
     plt.show()
 
 
@@ -252,6 +274,7 @@ def plot_radiance_and_snr(cw_nm, L_mean, SNR, title="Homogeneous-area SNR"):
 
 def run_snr_homogeneous(
     l1_file,
+    l2c_file=None,
     window_nm=(2100, 2450),
     auto_mask=True,
     provided_mask=None,
@@ -263,6 +286,49 @@ def run_snr_homogeneous(
     """Compute PRISMA SNR statistics over a homogeneous area."""
 
     he5_path = _resolve_l1_path(l1_file)
+    l2c_path = _resolve_l2c_path(l2c_file)
+
+    metadata_lines: list[str] = []
+    try:
+        sza_l1 = prisma_utils.prismaL1_SZA_read(he5_path)
+        metadata_lines.append(f"L1 Sun zenith angle: {sza_l1:.3f}°")
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"[PRISMA] Could not read Sun_zenith_angle from L1 file: {exc}")
+
+    if l2c_path:
+        geom_summary = prisma_utils.prisma_l2c_geometry_summary(l2c_path)
+        sun = geom_summary.get("sun_angles", {})
+        if sun.get("zenith_deg") is not None:
+            line = f"L2C Sun zenith angle: {sun['zenith_deg']:.3f}°"
+            print(f"[PRISMA] {line}")
+            metadata_lines.append(line)
+        if sun.get("azimuth_deg") is not None:
+            line = f"L2C Sun azimuth angle: {sun['azimuth_deg']:.3f}°"
+            print(f"[PRISMA] {line}")
+            metadata_lines.append(line)
+
+        for entry in geom_summary.get("datasets", {}).values():
+            stats = entry["stats"]
+            line = (
+                f"{entry['label']}: mean={stats['mean']:.3f}°, median={stats['median']:.3f}°, "
+                f"min={stats['min']:.3f}°, max={stats['max']:.3f}°"
+            )
+            print(f"[PRISMA] {line}")
+            metadata_lines.append(line)
+
+        rel_z_stats = geom_summary.get("relative_zenith_stats") or geom_summary.get("relative_zenith")
+        if rel_z_stats:
+            msg = f"Relative zenith (SZA−VZA) ≈ mean={rel_z_stats['mean']:.3f}°, median={rel_z_stats['median']:.3f}°"
+            print(f"[PRISMA] {msg}")
+            metadata_lines.append(msg)
+        rel_az_stats = geom_summary.get("relative_azimuth_stats") or geom_summary.get("relative_azimuth_summary")
+        if rel_az_stats:
+            msg = f"Relative azimuth ≈ mean={rel_az_stats['mean']:.3f}°, median={rel_az_stats['median']:.3f}°"
+            print(f"[PRISMA] {msg}")
+            metadata_lines.append(msg)
+    else:
+        print("[PRISMA] L2C file not provided: geometric statistics omitted.")
+
     cube, cw_matrix, _, *_ = prisma_utils.prisma_read(he5_path)
     rad = np.transpose(cube, (2, 0, 1))  # (bands, rows, cols)
     cw = np.nanmean(cw_matrix, axis=0)
@@ -299,6 +365,7 @@ def run_snr_homogeneous(
         L_mean,
         SNR,
         title=f"PRISMA homogeneous-area SNR • window: {lohi}",
+        metadata_lines=metadata_lines,
     )
 
     return {
@@ -320,12 +387,18 @@ def run_snr_homogeneous(
 if __name__ == "__main__":
     l1_example = (
         "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/PRISMA_calibration_data/"
-        "Roger_et_al_PRISMA_data/Northern_State_Sudan_20200401/20200401085313_20200401085318/"
+        "Northern_State_Sudan_20200401/20200401085313_20200401085318/"
         "PRS_L1_STD_OFFL_20200401085313_20200401085318_0001.zip"
+    )
+    l2c_example = (
+        "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/PRISMA_calibration_data/"
+        "Northern_State_Sudan_20200401/20200401085313_20200401085318/"
+        "PRS_L2C_STD_20200401085313_20200401085318_0001.zip"
     )
 
     out = run_snr_homogeneous(
         l1_file=l1_example,
+        l2c_file=l2c_example,
         window_nm=None, #(2000, 2450),
         auto_mask=True,
         frac_keep=0.12,

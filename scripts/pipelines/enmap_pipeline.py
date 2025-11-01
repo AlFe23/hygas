@@ -35,6 +35,59 @@ def ch4_detection_enmap(
     # Read SZA, meanWV, and mean_ground_elevation from EnMAP metadata
     SZA, meanWV, mean_ground_elevation = enmap_utils.enmap_metadata_read(metadata_file)
 
+    geometry = enmap_utils.enmap_scene_geometry(metadata_file)
+
+    vza = geometry.get("viewing_zenith_center")
+    if vza is not None:
+        logger.info("Viewing zenith angle (center): %.3f deg", vza)
+    else:
+        logger.warning("Viewing zenith angle (center) not found in metadata.")
+
+    vaa = geometry.get("viewing_azimuth_center")
+    if vaa is not None:
+        logger.info("Viewing azimuth angle (center): %.3f deg", vaa)
+    else:
+        logger.warning("Viewing azimuth angle (center) not found in metadata.")
+
+    saa = geometry.get("sun_azimuth_center")
+    if saa is not None:
+        logger.info("Sun azimuth angle (center): %.3f deg", saa)
+    else:
+        logger.warning("Sun azimuth angle (center) not found in metadata.")
+
+    sza_center = geometry.get("sun_zenith_center")
+    if sza_center is not None:
+        logger.info("Sun zenith angle (center): %.3f deg", sza_center)
+
+    along = geometry.get("along_off_nadir_center")
+    if along is not None:
+        logger.info("Along-track off-nadir angle (center): %.3f deg", along)
+
+    across = geometry.get("across_off_nadir_center")
+    if across is not None:
+        logger.info("Across-track off-nadir angle (center): %.3f deg", across)
+
+    if geometry.get("relative_zenith_center") is not None:
+        logger.info(
+            "Relative zenith (SZA − VZA) center: %.3f deg",
+            geometry["relative_zenith_center"],
+        )
+
+    if geometry.get("relative_azimuth_center") is not None:
+        diff = geometry["relative_azimuth_center"]
+        abs_diff = geometry.get("relative_azimuth_center_abs")
+        if abs_diff is not None:
+            logger.info(
+                "Relative azimuth (SAA − VAA) center: %.3f deg (|…|=%.3f deg)",
+                diff,
+                abs_diff,
+            )
+        else:
+            logger.info(
+                "Relative azimuth (SAA − VAA) center: %.3f deg",
+                diff,
+            )
+
     # Use the extracted mean ground elevation
     if mean_ground_elevation is None:
         logger.warning("Mean ground elevation missing in metadata, defaulting to 0 m.")

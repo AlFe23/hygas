@@ -32,6 +32,21 @@ def strip_namespaces(root):
     return root
 
 
+def _safe_float(text):
+    if text is None:
+        return None
+    stripped = text.strip()
+    if not stripped:
+        return None
+    try:
+        return float(stripped)
+    except ValueError:
+        try:
+            return float(stripped.replace(",", "."))
+        except ValueError:
+            return None
+
+
 ################################################################################
 # File discovery / GDAL readers
 ################################################################################
@@ -272,6 +287,90 @@ def enmap_read(vnir_file, swir_file, metadata_file):
     return concatenated_cube, concatenated_cw, concatenated_fwhm, rgb_image, latitude, longitude
 
 
+def enmap_scene_geometry(metadata_file):
+    """
+    Extract scene-level viewing/sun geometry summaries from EnMAP metadata.
+
+    Returns a dictionary containing center-point angles (viewing, sun, relative)
+    and along/across off-nadir components when available.
+    """
+
+    tree = ET.parse(metadata_file)
+    root = strip_namespaces(tree.getroot())
+
+    def _read_points(tag_name):
+        node = root.find(f".//specific/{tag_name}")
+        if node is None:
+            return {}
+        values = {}
+        for child in node:
+            val = _safe_float(child.text)
+            if val is not None:
+                values[child.tag] = val
+        return values
+
+    def _read_center(tag_name):
+        values = _read_points(tag_name)
+        return values.get("center"), values
+
+    geometry = {}
+
+    vza_center, vza_points = _read_center("viewingZenithAngle")
+    if vza_points:
+        geometry["viewing_zenith"] = vza_points
+    geometry["viewing_zenith_center"] = vza_center
+
+    vaa_center, vaa_points = _read_center("viewingAzimuthAngle")
+    if vaa_points:
+        geometry["viewing_azimuth"] = vaa_points
+    geometry["viewing_azimuth_center"] = vaa_center
+
+    saa_center, saa_points = _read_center("sunAzimuthAngle")
+    if saa_points:
+        geometry["sun_azimuth"] = saa_points
+    geometry["sun_azimuth_center"] = saa_center
+
+    sea_center, sea_points = _read_center("sunElevationAngle")
+    if sea_points:
+        geometry["sun_elevation"] = sea_points
+    geometry["sun_elevation_center"] = sea_center
+
+    # Try direct sun zenith tag, otherwise derive from elevation
+    sza_center_direct, sza_points_direct = _read_center("sunZenithAngle")
+    if sza_points_direct:
+        geometry["sun_zenith"] = sza_points_direct
+    if sza_center_direct is not None:
+        geometry["sun_zenith_center"] = sza_center_direct
+    elif sea_center is not None:
+        geometry["sun_zenith_center"] = 90.0 - sea_center
+
+    along_center, along_points = _read_center("alongOffNadirAngle")
+    if along_points:
+        geometry["along_off_nadir"] = along_points
+    geometry["along_off_nadir_center"] = along_center
+
+    across_center, across_points = _read_center("acrossOffNadirAngle")
+    if across_points:
+        geometry["across_off_nadir"] = across_points
+    geometry["across_off_nadir_center"] = across_center
+
+    # Relative zenith/azimuth (using center values)
+    vza = geometry.get("viewing_zenith_center")
+    sza = geometry.get("sun_zenith_center")
+    if vza is not None and sza is not None:
+        geometry["relative_zenith_center"] = sza - vza
+
+    vaa = geometry.get("viewing_azimuth_center")
+    saa = geometry.get("sun_azimuth_center")
+    if vaa is not None and saa is not None:
+        diff = saa - vaa
+        wrapped = ((diff + 180.0) % 360.0) - 180.0
+        geometry["relative_azimuth_center"] = diff
+        geometry["relative_azimuth_center_abs"] = abs(wrapped)
+
+    return geometry
+
+
 def enmap_metadata_read(metadata_file):
     """
     Reads SZA and mean WV from EnMAP metadata XML file.
@@ -284,30 +383,20 @@ def enmap_metadata_read(metadata_file):
     - meanWV: Mean Water Vapor in g/cm^2.
     """
     tree = ET.parse(metadata_file)
-    root = tree.getroot()
+    root = strip_namespaces(tree.getroot())
 
-    # Extract SZA
-    sza_elem = root.find(".//specific/qualityFlag/sceneSZA")
-    if sza_elem is not None and sza_elem.text is not None:
-        SZA = float(sza_elem.text)
-    else:
+    SZA = _safe_float(root.findtext(".//specific/qualityFlag/sceneSZA"))
+    if SZA is None:
         raise ValueError("Solar Zenith Angle (sceneSZA) not found in metadata.")
 
-    # Extract mean WV
-    wv_elem = root.find(".//specific/qualityFlag/sceneWV")
-    if wv_elem is not None and wv_elem.text is not None:
-        scene_wv = float(wv_elem.text)
-        meanWV = scene_wv / 1000  # Convert from [cm * 1000] to [cm]
-    else:
+    scene_wv = _safe_float(root.findtext(".//specific/qualityFlag/sceneWV"))
+    if scene_wv is None:
         raise ValueError("Mean Water Vapor (sceneWV) not found in metadata.")
+    meanWV = scene_wv / 1000.0
 
-    # Alternatively, extract meanGroundElevation
-    mean_ground_elevation_elem = root.find(".//specific/meanGroundElevation")
-    if mean_ground_elevation_elem is not None and mean_ground_elevation_elem.text is not None:
-        mean_ground_elevation = float(mean_ground_elevation_elem.text)
-    else:
+    mean_ground_elevation = _safe_float(root.findtext(".//specific/meanGroundElevation"))
+    if mean_ground_elevation is None:
         print("Warning: meanGroundElevation not found in metadata.")
-        mean_ground_elevation = None  # Handle appropriately
 
     print(f"Sun Zenith Angle (degrees): {SZA}")
     print(f"Mean Water Vapor (g/cm^2): {meanWV}")

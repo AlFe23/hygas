@@ -268,7 +268,8 @@ def plot_radiance_and_snr(
     L_mean,
     SNR,
     title="Homogeneous-area SNR",
-    radiance_unit="uW_cm2_sr_nm"
+    radiance_unit="uW_cm2_sr_nm",
+    metadata_lines=None,
 ):
     # Convert to requested plotting units (default: µW cm^-2 sr^-1 nm^-1)
     if radiance_unit == "uW_cm2_sr_nm":
@@ -291,8 +292,14 @@ def plot_radiance_and_snr(
     ax2.set_ylabel(f"Radiance ({label_unit})", color="C1")
     ax2.tick_params(axis="y", labelcolor="C1")
 
-    fig.suptitle(f"{title}\n(radiance in µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)", fontsize=10)
-    fig.tight_layout()
+    header = f"{title}\n(radiance in µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)"
+    if metadata_lines:
+        header = header + "\n" + "\n".join(metadata_lines)
+        fig.suptitle(header, fontsize=10)
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+    else:
+        fig.suptitle(header, fontsize=10)
+        fig.tight_layout()
     plt.show()
 
 
@@ -328,6 +335,40 @@ def run_snr_homogeneous(
     """
     vnir_path, swir_path, xml_path = enmap_utils.find_enmap_files(in_dir)
     vnir_meta, swir_meta = enmap_utils.parse_metadata_vnir_swir(xml_path)
+
+    enmap_utils.enmap_metadata_read(xml_path)
+    geometry = enmap_utils.enmap_scene_geometry(xml_path)
+    metadata_lines: list[str] = []
+
+    def _append(label, key):
+        value = geometry.get(key)
+        if value is not None:
+            line = f"{label}: {value:.3f}°"
+            print(f"[EnMAP] {line}")
+            metadata_lines.append(line)
+
+    _append("Viewing zenith angle (center)", "viewing_zenith_center")
+    _append("Viewing azimuth angle (center)", "viewing_azimuth_center")
+    _append("Sun azimuth angle (center)", "sun_azimuth_center")
+    _append("Sun zenith angle (center)", "sun_zenith_center")
+    _append("Along off-nadir (center)", "along_off_nadir_center")
+    _append("Across off-nadir (center)", "across_off_nadir_center")
+
+    if geometry.get("relative_zenith_center") is not None:
+        val = geometry["relative_zenith_center"]
+        line = f"Relative zenith (SZA − VZA) center: {val:.3f}°"
+        print(f"[EnMAP] {line}")
+        metadata_lines.append(line)
+
+    if geometry.get("relative_azimuth_center") is not None:
+        diff = geometry["relative_azimuth_center"]
+        abs_diff = geometry.get("relative_azimuth_center_abs")
+        if abs_diff is not None:
+            line = f"Relative azimuth (SAA − VAA) center: {diff:.3f}° (|…|={abs_diff:.3f}°)"
+        else:
+            line = f"Relative azimuth (SAA − VAA) center: {diff:.3f}°"
+        print(f"[EnMAP] {line}")
+        metadata_lines.append(line)
 
     cube, cw_full, _, _, _, _ = enmap_utils.enmap_read(vnir_path, swir_path, xml_path)
     rad_full = np.transpose(cube, (2, 0, 1))  # (bands, rows, cols), already in µW cm^-2 sr^-1 nm^-1
@@ -378,7 +419,8 @@ def run_snr_homogeneous(
     plot_radiance_and_snr(
         cw_sel, L_mean, SNR,
         title=f"{sens_label} homogeneous-area SNR • window: {lohi}",
-        radiance_unit=radiance_unit
+        radiance_unit=radiance_unit,
+        metadata_lines=metadata_lines,
     )
 
     return {
@@ -397,9 +439,9 @@ def run_snr_homogeneous(
 # ------------------------------
 if __name__ == "__main__":
     main_dir = (
-        "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/codes/"
-        "test_data/20221002T074828/"
-        "L1B-DT0000004147_20221002T074828Z_001_V010501_20241110T222720Z"
+        "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/"
+        "EnMAP_calibration_data/Agadez_Niger_20220712/"
+        "L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z"
     )
 
     out = run_snr_homogeneous(

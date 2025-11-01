@@ -90,6 +90,50 @@ from scripts.satellites import enmap_utils
 # --------------------------- Analysis & Plots ---------------------------
 
 
+def _print_enmap_metadata(xml_path: str):
+    """Print LUT-relevant EnMAP metadata plus viewing geometry."""
+
+    enmap_utils.enmap_metadata_read(xml_path)
+    geometry = enmap_utils.enmap_scene_geometry(xml_path)
+
+    summary_lines: list[str] = []
+
+    def _append(label, key, unit="°"):
+        value = geometry.get(key)
+        if value is not None:
+            line = f"{label}: {value:.3f}{unit}"
+            print(f"[EnMAP] {line}")
+            summary_lines.append(line)
+            return True
+        return False
+
+    _append("Viewing zenith angle (center)", "viewing_zenith_center")
+    _append("Viewing azimuth angle (center)", "viewing_azimuth_center")
+    _append("Sun azimuth angle (center)", "sun_azimuth_center")
+    _append("Sun elevation angle (center)", "sun_elevation_center")
+    _append("Sun zenith angle (center)", "sun_zenith_center")
+    _append("Along off-nadir (center)", "along_off_nadir_center")
+    _append("Across off-nadir (center)", "across_off_nadir_center")
+
+    if geometry.get("relative_zenith_center") is not None:
+        val = geometry["relative_zenith_center"]
+        line = f"Relative zenith (SZA − VZA) center: {val:.3f}°"
+        print(f"[EnMAP] {line}")
+        summary_lines.append(line)
+
+    if geometry.get("relative_azimuth_center") is not None:
+        diff = geometry["relative_azimuth_center"]
+        abs_diff = geometry.get("relative_azimuth_center_abs")
+        if abs_diff is not None:
+            line = f"Relative azimuth (SAA − VAA) center: {diff:.3f}° (|…|={abs_diff:.3f}°)"
+        else:
+            line = f"Relative azimuth (SAA − VAA) center: {diff:.3f}°"
+        print(f"[EnMAP] {line}")
+        summary_lines.append(line)
+
+    return summary_lines
+
+
 def mean_spectrum(rad_cube, cw_vec):
     return cw_vec, rad_cube.reshape(rad_cube.shape[0], -1).mean(axis=1)
 
@@ -147,7 +191,7 @@ def plot_cw_and_fwhm_across_track_ax(ax, band_meta, ncols, prefix=""):
     ax2.set_ylabel("FWHM(x) [nm]")
 
 
-def render_summary_plots(mean_entries, smile_entries):
+def render_summary_plots(mean_entries, smile_entries, metadata_lines=None):
     axes_needed = len(mean_entries) + 2 * len(smile_entries)
     if axes_needed == 0:
         return
@@ -176,7 +220,11 @@ def render_summary_plots(mean_entries, smile_entries):
     for ax in axes[idx:]:
         ax.axis('off')
 
-    fig.tight_layout()
+    if metadata_lines:
+        fig.suptitle("\n".join(metadata_lines), fontsize=10)
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+    else:
+        fig.tight_layout()
     plt.show()
 
 # --------------------------- Main pipeline ---------------------------
@@ -187,6 +235,7 @@ def run_vnir_swir_independent(in_dir, vnir_local_band_to_plot=None, swir_local_b
     print(f"[i] VNIR: {os.path.basename(vnir_path)}")
     print(f"[i] SWIR: {os.path.basename(swir_path)}")
     print(f"[i] META: {os.path.basename(xml_path)}")
+    metadata_lines = _print_enmap_metadata(xml_path)
 
     # VNIR/SWIR meta with local smile indices
     vnir_meta, swir_meta = enmap_utils.parse_metadata_vnir_swir(xml_path)
@@ -252,7 +301,7 @@ def run_vnir_swir_independent(in_dir, vnir_local_band_to_plot=None, swir_local_b
             "prefix": "SWIR — ",
         })
 
-    render_summary_plots(mean_entries, smile_entries)
+    render_summary_plots(mean_entries, smile_entries, metadata_lines=metadata_lines)
 
 # --------------------------- Example entry ---------------------------
 

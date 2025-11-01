@@ -9,11 +9,29 @@ import os
 import re
 import zipfile
 import subprocess
+from typing import Iterable
 from datetime import datetime
 
 import h5py
 import numpy as np
 from osgeo import gdal, osr
+
+
+def _format_hdf_attr(value):
+    """Return a human-readable representation for an HDF attribute value."""
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8", errors="replace")
+        except Exception:
+            value = repr(value)
+    elif isinstance(value, np.ndarray):
+        flat = value.flatten()
+        if flat.size > 6:
+            head = ", ".join(map(str, flat[:6]))
+            value = f"[{head}, ...] (len={flat.size})"
+        else:
+            value = flat.tolist()
+    return value
 
 
 def prismaL2C_WV_read(filename):
@@ -50,6 +68,245 @@ def prismaL1_SZA_read(filename):
     print("Sun Zenith Angle (degrees):", SZA)
 
     return SZA
+
+
+def describe_prisma_hdf_structure(filename, max_depth=None, include_attrs=False):
+    """
+    Return a multi-line string describing the hierarchy of a PRISMA HDF5 file.
+
+    Parameters
+    ----------
+    filename : str
+        Path to the PRISMA HDF5 file (L1 or L2C).
+    max_depth : int | None
+        Optional maximum depth to traverse (root depth=0). ``None`` means no limit.
+    include_attrs : bool
+        When True, include dataset/group attributes in the report (truncated).
+    """
+
+    lines = []
+
+    with h5py.File(filename, "r") as f:
+        def _recurse(name, obj, depth):
+            if max_depth is not None and depth > max_depth:
+                return
+
+            indent = "  " * depth
+            label = name.split("/")[-1] if name else "/"
+
+            if isinstance(obj, h5py.Dataset):
+                shape = obj.shape
+                dtype = obj.dtype
+                lines.append(f"{indent}- {label} [dataset] shape={shape} dtype={dtype}")
+            else:  # Group
+                lines.append(f"{indent}+ {label} [group]")
+
+            if include_attrs and obj.attrs:
+                for attr_key, attr_val in obj.attrs.items():
+                    formatted = _format_hdf_attr(attr_val)
+                    lines.append(f"{indent}  @{attr_key} = {formatted}")
+
+            if isinstance(obj, h5py.Group):
+                for key, child in obj.items():
+                    child_name = f"{name}/{key}" if name else key
+                    _recurse(child_name, child, depth + 1)
+
+        _recurse("", f, 0)
+
+    return "\n".join(lines)
+
+
+def describe_prisma_hdf_object(
+    filename,
+    path,
+    include_attrs=False,
+    preview=None,
+    max_members=30,
+):
+    """
+    Return a detailed string describing a specific dataset or group in a PRISMA HDF5.
+
+    Parameters
+    ----------
+    filename : str
+        Path to the HDF5 file.
+    path : str
+        Target dataset or group path (use "/" for root).
+    include_attrs : bool
+        When True, include object attributes in the output.
+    preview : int | None
+        For datasets, show up to N flattened values from the leading block.
+    max_members : int
+        When inspecting a group, list at most this many immediate children.
+    """
+
+    def _slice_for_preview(shape, count):
+        if not shape:  # scalar dataset
+            return ()
+        slices = [slice(0, min(count, shape[0]))]
+        for dim in shape[1:]:
+            slices.append(slice(0, min(1, dim)))
+        return tuple(slices)
+
+    normalized_path = path if path and path != "/" else "/"
+    lines: list[str] = [f"Path: {normalized_path}"]
+
+    with h5py.File(filename, "r") as f:
+        if normalized_path == "/":
+            obj = f["/"]
+        else:
+            if normalized_path not in f:
+                raise KeyError(normalized_path)
+            obj = f[normalized_path]
+
+        if isinstance(obj, h5py.Dataset):
+            lines.append("Type: dataset")
+            lines.append(f"Shape: {obj.shape}")
+            lines.append(f"Dtype: {obj.dtype}")
+            if preview:
+                slice_spec = _slice_for_preview(obj.shape, preview)
+                data = np.asarray(obj[slice_spec]).reshape(-1)
+                head = ", ".join(map(str, data[:preview]))
+                lines.append(f"Preview ({min(preview, data.size)} values): [{head}]")
+        elif isinstance(obj, h5py.Group):
+            lines.append("Type: group")
+            members: Iterable[str] = obj.keys()
+            collected = []
+            for idx, key in enumerate(members):
+                if idx >= max_members:
+                    collected.append(f"... ({len(obj) - max_members} more)")
+                    break
+                child = obj[key]
+                kind = "dataset" if isinstance(child, h5py.Dataset) else "group"
+                collected.append(f"- {key} ({kind})")
+            if collected:
+                lines.append("Members:")
+                lines.extend(f"  {item}" for item in collected)
+        else:
+            lines.append(f"Type: {type(obj)}")
+
+        if include_attrs and obj.attrs:
+            lines.append("Attributes:")
+            for attr_key, attr_val in obj.attrs.items():
+                formatted = _format_hdf_attr(attr_val)
+                lines.append(f"  @{attr_key} = {formatted}")
+
+    return "\n".join(lines)
+
+
+def _angle_stats(values, valid_range=None):
+    """Return descriptive statistics for angle arrays in degrees."""
+
+    arr = np.asarray(values, dtype=np.float64)
+    arr = arr[np.isfinite(arr)]
+    if valid_range is not None:
+        lo, hi = valid_range
+        arr = arr[(arr >= lo) & (arr <= hi)]
+    if arr.size == 0:
+        return None
+
+    return {
+        "mean": float(np.mean(arr)),
+        "median": float(np.median(arr)),
+        "min": float(np.min(arr)),
+        "max": float(np.max(arr)),
+        "std": float(np.std(arr)),
+        "count": int(arr.size),
+    }
+
+
+def prisma_l2c_geometry_summary(filename):
+    """
+    Summarize PRISMA L2C geometric fields (observing/sun angles).
+
+    Returns a dictionary with dataset statistics and scene-level sun angles.
+    """
+
+    dataset_map = {
+        "solar_zenith": {
+            "path": "HDFEOS/SWATHS/PRS_L2C_HCO/Geometric Fields/Solar_Zenith_Angle",
+            "label": "Solar zenith angle",
+            "valid_range": (0.0, 90.0),
+        },
+        "view_zenith": {
+            "path": "HDFEOS/SWATHS/PRS_L2C_HCO/Geometric Fields/Observing_Angle",
+            "label": "Observing angle (view zenith)",
+            "valid_range": (0.0, 90.0),
+        },
+        "relative_azimuth": {
+            "path": "HDFEOS/SWATHS/PRS_L2C_HCO/Geometric Fields/Rel_Azimuth_Angle",
+            "label": "Relative azimuth angle",
+            "valid_range": (0.0, 180.0),
+        },
+    }
+
+    def _attr_float(attrs, key):
+        if key not in attrs:
+            return None
+        try:
+            return float(attrs[key])
+        except Exception:
+            return None
+
+    summary = {
+        "datasets": {},
+        "sun_angles": {
+            "zenith_deg": None,
+            "azimuth_deg": None,
+        },
+    }
+    data_arrays = {}
+
+    with h5py.File(filename, "r") as f:
+        summary["sun_angles"]["zenith_deg"] = _attr_float(f.attrs, "Sun_zenith_angle")
+        summary["sun_angles"]["azimuth_deg"] = _attr_float(f.attrs, "Sun_azimuth_angle")
+
+        for key, spec in dataset_map.items():
+            path = spec["path"]
+            if path not in f:
+                continue
+            data = f[path][:]
+            data_arrays[key] = data
+            stats = _angle_stats(data, spec.get("valid_range"))
+            if stats is None:
+                continue
+            summary["datasets"][key] = {
+                "label": spec["label"],
+                "path": path,
+                "stats": stats,
+            }
+
+    solar_arr = data_arrays.get("solar_zenith")
+    view_arr = data_arrays.get("view_zenith")
+    if solar_arr is not None and view_arr is not None:
+        rel_zenith = np.asarray(solar_arr, dtype=np.float64) - np.asarray(view_arr, dtype=np.float64)
+        rel_stats = _angle_stats(rel_zenith)
+        if rel_stats is not None:
+            summary["relative_zenith_stats"] = rel_stats
+
+    rel_az_arr = data_arrays.get("relative_azimuth")
+    if rel_az_arr is not None:
+        rel_stats = _angle_stats(rel_az_arr, (0.0, 180.0))
+        if rel_stats is not None:
+            summary["relative_azimuth_stats"] = rel_stats
+
+    # Approximate relative zenith using means if stats present but difference not computed
+    if "relative_zenith_stats" not in summary and {"solar_zenith", "view_zenith"}.issubset(summary["datasets"]):
+        solar_stats = summary["datasets"]["solar_zenith"]["stats"]
+        view_stats = summary["datasets"]["view_zenith"]["stats"]
+        summary["relative_zenith"] = {
+            "mean": solar_stats["mean"] - view_stats["mean"],
+            "median": solar_stats["median"] - view_stats["median"],
+        }
+
+    if "relative_azimuth_stats" not in summary and "relative_azimuth" in summary["datasets"]:
+        rel_stats = summary["datasets"]["relative_azimuth"]["stats"]
+        summary["relative_azimuth_summary"] = {
+            "mean": rel_stats["mean"],
+            "median": rel_stats["median"],
+        }
+
+    return summary
 
 
 def prismaL2C_bbox_read(filename):
@@ -376,4 +633,3 @@ def extract_he5_from_zip(zip_path, extract_to):
 def get_date_from_filename(filename):
     match = re.search(r"(\d{8}\d{6})", filename)
     return match.group(1) if match else None
-

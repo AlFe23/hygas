@@ -12,6 +12,7 @@ dependencies:
   - gdal=3.8.*
   - spectral
   - scikit-learn
+  - scikit-image
   - pyinstaller
   - latexcodec
   - proj

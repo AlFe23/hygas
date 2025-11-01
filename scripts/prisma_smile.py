@@ -30,6 +30,66 @@ def _resolve_l1_path(l1_path: str) -> str:
     return path
 
 
+def _resolve_l2_path(l2_path: str | None) -> str | None:
+    if l2_path is None:
+        return None
+    path = os.path.abspath(l2_path)
+    if path.lower().endswith(".zip"):
+        extracted = prisma_utils.extract_he5_from_zip(path, os.path.dirname(path))
+        if extracted is None:
+            raise FileNotFoundError(
+                f"Could not locate a .he5 file inside ZIP {path}. Provide the PRS_L2C HE5 path."
+            )
+        return extracted
+    return path
+
+
+def _print_prisma_metadata(l1_path: str, l2c_path: str | None):
+    """Print scene-level parameters and geometric summaries."""
+
+    prisma_utils.prismaL1_SZA_read(l1_path)
+
+    if l2c_path is None:
+        print("[PRISMA] L2C file not provided: skipping geometric field summaries.")
+        return []
+
+    geom_summary = prisma_utils.prisma_l2c_geometry_summary(l2c_path)
+    summary_lines: list[str] = []
+
+    sun = geom_summary.get("sun_angles", {})
+    if sun.get("zenith_deg") is not None:
+        line = f"Sun zenith angle (attribute): {sun['zenith_deg']:.3f}°"
+        print(f"[PRISMA] {line}")
+        summary_lines.append(line)
+    if sun.get("azimuth_deg") is not None:
+        line = f"Sun azimuth angle (attribute): {sun['azimuth_deg']:.3f}°"
+        print(f"[PRISMA] {line}")
+        summary_lines.append(line)
+
+    for key, entry in geom_summary.get("datasets", {}).items():
+        stats = entry["stats"]
+        line = (
+            f"[PRISMA] {entry['label']}: mean={stats['mean']:.3f}°, median={stats['median']:.3f}°, "
+            f"min={stats['min']:.3f}°, max={stats['max']:.3f}° (std={stats['std']:.3f}°, n={stats['count']})"
+        )
+        print(line)
+        summary_lines.append(line.replace("[PRISMA] ", ""))
+
+    rel_z_stats = geom_summary.get("relative_zenith_stats") or geom_summary.get("relative_zenith")
+    if rel_z_stats:
+        msg = f"Relative zenith (SZA−VZA) ≈ mean={rel_z_stats['mean']:.3f}°, median={rel_z_stats['median']:.3f}°"
+        print(f"[PRISMA] {msg}")
+        summary_lines.append(msg)
+
+    rel_az_stats = geom_summary.get("relative_azimuth_stats") or geom_summary.get("relative_azimuth_summary")
+    if rel_az_stats:
+        msg = f"Relative azimuth ≈ mean={rel_az_stats['mean']:.3f}°, median={rel_az_stats['median']:.3f}°"
+        print(f"[PRISMA] {msg}")
+        summary_lines.append(msg)
+
+    return summary_lines
+
+
 # --------------------------- Analysis utilities ---------------------------
 
 
@@ -87,7 +147,14 @@ def plot_prisma_cw_matrix_ax(ax, cw_matrix):
     return im
 
 
-def render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix, show_cw_matrix=True):
+def render_summary_plots(
+    mean_entries,
+    smile_entries,
+    cw_matrix,
+    fwhm_matrix,
+    show_cw_matrix=True,
+    metadata_lines=None,
+):
     extra_axes = 1 if show_cw_matrix else 0
     axes_needed = len(mean_entries) + 2 * len(smile_entries) + extra_axes
     if axes_needed == 0:
@@ -142,17 +209,29 @@ def render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix, sh
         cbar = fig.colorbar(cw_im, ax=cw_ax, fraction=0.046, pad=0.04)
         cbar.set_label("Wavelength (nm)")
 
-    fig.tight_layout()
+    if metadata_lines:
+        fig.suptitle("\n".join(metadata_lines), fontsize=10)
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+    else:
+        fig.tight_layout()
     plt.show()
 
 
 # --------------------------- Main runner ---------------------------
 
 
-def run_prisma_smile(l1_file, vnir_threshold_nm=1000.0, vnir_band_index=None, swir_band_index=None):
+def run_prisma_smile(
+    l1_file,
+    l2c_file=None,
+    vnir_threshold_nm=1000.0,
+    vnir_band_index=None,
+    swir_band_index=None,
+):
     """Load a PRISMA L1 scene and visualize mean spectra plus smile diagnostics."""
 
     he5_path = _resolve_l1_path(l1_file)
+    l2c_path = _resolve_l2_path(l2c_file)
+    metadata_lines = _print_prisma_metadata(he5_path, l2c_path)
     cube, cw_matrix, fwhm_matrix, *_ = prisma_utils.prisma_read(he5_path)
     rad = np.transpose(cube, (2, 0, 1))
 
@@ -205,7 +284,14 @@ def run_prisma_smile(l1_file, vnir_threshold_nm=1000.0, vnir_band_index=None, sw
     _append_smile_entry(vnir_band_index, "VNIR — ")
     _append_smile_entry(swir_band_index, "SWIR — ")
 
-    render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix, show_cw_matrix=True)
+    render_summary_plots(
+        mean_entries,
+        smile_entries,
+        cw_matrix,
+        fwhm_matrix,
+        show_cw_matrix=True,
+        metadata_lines=metadata_lines,
+    )
 
 
 # --------------------------- Example entry ---------------------------
@@ -217,9 +303,15 @@ if __name__ == "__main__":
         "Northern_State_Sudan_20200401/20200401085313_20200401085318/"
         "PRS_L1_STD_OFFL_20200401085313_20200401085318_0001.zip"
     )
+    l2c_example = (
+        "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/PRISMA_calibration_data/"
+        "Northern_State_Sudan_20200401/20200401085313_20200401085318/"
+        "PRS_L2C_STD_20200401085313_20200401085318_0001.zip"
+    )
 
     run_prisma_smile(
         l1_example,
+        l2c_file=l2c_example,
         vnir_threshold_nm=1000.0,
         vnir_band_index=43,
         swir_band_index=202,

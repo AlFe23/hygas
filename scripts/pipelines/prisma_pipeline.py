@@ -37,6 +37,46 @@ def ch4_detection(
     # Read SZA from L1 image attributes
     SZA = prisma_utils.prismaL1_SZA_read(L1_file)
 
+    geom_summary = prisma_utils.prisma_l2c_geometry_summary(L2C_file)
+    sun_angles = geom_summary.get("sun_angles", {})
+    if sun_angles.get("zenith_deg") is not None:
+        logger.info("Sun zenith angle (scene attribute): %.3f°", sun_angles["zenith_deg"])
+    if sun_angles.get("azimuth_deg") is not None:
+        logger.info("Sun azimuth angle (scene attribute): %.3f°", sun_angles["azimuth_deg"])
+
+    dataset_summaries = geom_summary.get("datasets", {})
+    if dataset_summaries:
+        for key, entry in dataset_summaries.items():
+            stats = entry["stats"]
+            logger.info(
+                "%s — mean=%.3f°, median=%.3f°, min=%.3f°, max=%.3f°, std=%.3f° (n=%d, dataset=%s)",
+                entry["label"],
+                stats["mean"],
+                stats["median"],
+                stats["min"],
+                stats["max"],
+                stats["std"],
+                stats["count"],
+                entry["path"],
+            )
+    else:
+        logger.warning("Geometric Fields datasets not found in PRISMA L2C file.")
+
+    rel_z_stats = geom_summary.get("relative_zenith_stats") or geom_summary.get("relative_zenith")
+    if rel_z_stats:
+        logger.info(
+            "Relative zenith angle (SZA − VZA): mean=%.3f°, median=%.3f°",
+            rel_z_stats["mean"],
+            rel_z_stats["median"],
+        )
+    rel_az_stats = geom_summary.get("relative_azimuth_stats") or geom_summary.get("relative_azimuth_summary")
+    if rel_az_stats:
+        logger.info(
+            "Relative azimuth angle: mean=%.3f°, median=%.3f°",
+            rel_az_stats["mean"],
+            rel_az_stats["median"],
+        )
+
     # Read meanWV from L2C Water Vapor Map product
     meanWV, PRS_L2C_WVM, latitude_WVM, longitude_WVM = prisma_utils.prismaL2C_WV_read(L2C_file)
 
