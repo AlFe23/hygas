@@ -113,13 +113,14 @@ def delta_lambda_across_track(band_meta, ncols):
 def plot_smile_delta_lambda_ax(ax, band_meta, ncols, prefix=""):
     x, delta = delta_lambda_across_track(band_meta, ncols)
     note = "" if band_meta['smile_coeffs'] is not None else " (no coeffs in metadata)"
+    lambda_nominal = band_meta['cw_nm']
     ax.plot(x, delta, lw=1)
     ax.axhline(0, color='k', lw=0.8, alpha=0.4)
     ax.set_xlabel("Across-track column (x)")
     ax.set_ylabel("Δλ(x) = CW(x) − CW_nominal  [nm]")
     ax.set_title(
         f"{prefix}Spectral smile Δλ(x) — local band {band_meta['local_idx']}"
-        f" (global {band_meta['global_id']}){note}"
+        f" (global {band_meta['global_id']}, λ0={lambda_nominal:.2f} nm){note}"
     )
     ax.grid(alpha=0.3)
 
@@ -137,7 +138,10 @@ def plot_cw_and_fwhm_across_track_ax(ax, band_meta, ncols, prefix=""):
     ax.set_xlabel("Across-track column (x)")
     ax.set_ylabel("Center wavelength λ(x) [nm]")
     ax.grid(alpha=0.3)
-    ax.set_title(f"{prefix}CW(x) & FWHM(x) — local band {band_meta['local_idx']} (global {band_meta['global_id']})")
+    ax.set_title(
+        f"{prefix}CW(x) & FWHM(x) — local band {band_meta['local_idx']} "
+        f"(global {band_meta['global_id']}, λ0={lam0:.2f} nm)"
+    )
     ax2 = ax.twinx()
     ax2.plot(x, fwhm_x, lw=1, ls="--", color="orange")
     ax2.set_ylabel("FWHM(x) [nm]")
@@ -222,6 +226,10 @@ def run_vnir_swir_independent(in_dir, vnir_local_band_to_plot=None, swir_local_b
             raise ValueError(f"VNIR local band must be in 1..{len(vnir_meta)}")
         meta_b = vnir_meta[vnir_local_band_to_plot - 1]
         ncols = vnir_rad.shape[2]
+        print(
+            f"[i] VNIR local band {vnir_local_band_to_plot} (global {meta_b['global_id']}): "
+            f"λ0={meta_b['cw_nm']:.2f} nm, FWHM={meta_b['fwhm_nm']:.2f} nm"
+        )
         smile_entries.append({
             "meta": meta_b,
             "ncols": ncols,
@@ -234,6 +242,10 @@ def run_vnir_swir_independent(in_dir, vnir_local_band_to_plot=None, swir_local_b
             raise ValueError(f"SWIR local band must be in 1..{len(swir_meta)}")
         meta_b = swir_meta[swir_local_band_to_plot - 1]
         ncols = swir_rad.shape[2]
+        print(
+            f"[i] SWIR local band {swir_local_band_to_plot} (global {meta_b['global_id']}): "
+            f"λ0={meta_b['cw_nm']:.2f} nm, FWHM={meta_b['fwhm_nm']:.2f} nm"
+        )
         smile_entries.append({
             "meta": meta_b,
             "ncols": ncols,
@@ -247,14 +259,14 @@ def run_vnir_swir_independent(in_dir, vnir_local_band_to_plot=None, swir_local_b
 if __name__ == "__main__":
     # main_dir = r"/mnt/d/.../L1B-DT0000004147_20221002T074828Z_001_V010501_20241110T222720Z"
     main_dir = (
-        "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/codes/"
-        "test_data/20221002T074828/"
-        "L1B-DT0000004147_20221002T074828Z_001_V010501_20241110T222720Z"
+        "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/"
+        "EnMAP_calibration_data/Agadez_Niger_20220712/"
+        "L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z"
     )
 
     # Choose LOCAL band indices for VNIR and SWIR (1-based within each sensor)
     run_vnir_swir_independent(
         main_dir,
         vnir_local_band_to_plot=60,   # e.g., VNIR local band #60
-        swir_local_band_to_plot=100   # e.g., SWIR local band #100
+        swir_local_band_to_plot=114   # e.g., SWIR local band #100
     )

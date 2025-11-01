@@ -68,30 +68,48 @@ def plot_prisma_cw_fwhm_ax(ax, cw_matrix, fwhm_matrix, band_idx, wavelength_nm, 
     profile = cw_matrix[:, idx]
     fwhm_profile = fwhm_matrix[:, idx]
     x = np.arange(1, profile.size + 1)
-    ax.plot(x, profile, lw=1)
+    cw_line, = ax.plot(x, profile, lw=1, label="Center wavelength")
     ax.set_xlabel("Across-track sample")
     ax.set_ylabel("λ(x) [nm]")
     ax.grid(alpha=0.3)
     ax.set_title(f"{label}CW & FWHM — band #{band_idx} ({wavelength_nm:.1f} nm)")
     ax2 = ax.twinx()
-    ax2.plot(x, fwhm_profile, lw=1, ls="--", color="orange")
+    fwhm_line, = ax2.plot(x, fwhm_profile, lw=1, ls="--", color="orange", label="FWHM")
     ax2.set_ylabel("FWHM(x) [nm]")
+    ax.legend([cw_line, fwhm_line], ["Center wavelength", "FWHM"], loc="upper right")
 
 
-def render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix):
-    axes_needed = len(mean_entries) + 2 * len(smile_entries)
+def plot_prisma_cw_matrix_ax(ax, cw_matrix):
+    im = ax.imshow(cw_matrix, aspect="auto", origin="lower", cmap="viridis")
+    ax.set_xlabel("Band index")
+    ax.set_ylabel("Across-track sample")
+    ax.set_title("Center wavelength map")
+    return im
+
+
+def render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix, show_cw_matrix=True):
+    extra_axes = 1 if show_cw_matrix else 0
+    axes_needed = len(mean_entries) + 2 * len(smile_entries) + extra_axes
     if axes_needed == 0:
         return
 
-    nrows, ncols = 3, 2
-    fig, axes_grid = plt.subplots(nrows, ncols, figsize=(10, 11))
-    axes = axes_grid.flatten()
+    ncols = 2
+    nrows = int(np.ceil(axes_needed / ncols))
+    fig, axes_grid = plt.subplots(nrows, ncols, figsize=(10, 4.0 * nrows))
+    axes = np.atleast_1d(axes_grid).ravel()
 
     idx = 0
     for entry in mean_entries:
         if idx >= axes.size:
             break
         plot_mean_spectrum_ax(axes[idx], entry["cw"], entry["spec"], entry["title"])
+        idx += 1
+
+    cw_im = None
+    cw_ax = None
+    if show_cw_matrix and idx < axes.size:
+        cw_ax = axes[idx]
+        cw_im = plot_prisma_cw_matrix_ax(cw_ax, cw_matrix)
         idx += 1
 
     for entry in smile_entries:
@@ -119,6 +137,10 @@ def render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix):
 
     for ax in axes[idx:]:
         ax.axis("off")
+
+    if cw_im is not None and cw_ax is not None:
+        cbar = fig.colorbar(cw_im, ax=cw_ax, fraction=0.046, pad=0.04)
+        cbar.set_label("Wavelength (nm)")
 
     fig.tight_layout()
     plt.show()
@@ -183,7 +205,7 @@ def run_prisma_smile(l1_file, vnir_threshold_nm=1000.0, vnir_band_index=None, sw
     _append_smile_entry(vnir_band_index, "VNIR — ")
     _append_smile_entry(swir_band_index, "SWIR — ")
 
-    render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix)
+    render_summary_plots(mean_entries, smile_entries, cw_matrix, fwhm_matrix, show_cw_matrix=True)
 
 
 # --------------------------- Example entry ---------------------------
@@ -192,13 +214,13 @@ def run_prisma_smile(l1_file, vnir_threshold_nm=1000.0, vnir_band_index=None, sw
 if __name__ == "__main__":
     l1_example = (
         "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/PRISMA_calibration_data/"
-        "Roger_et_al_PRISMA_data/Northern_State_Sudan_20200401/20200401085313_20200401085318/"
+        "Northern_State_Sudan_20200401/20200401085313_20200401085318/"
         "PRS_L1_STD_OFFL_20200401085313_20200401085318_0001.zip"
     )
 
     run_prisma_smile(
         l1_example,
         vnir_threshold_nm=1000.0,
-        vnir_band_index=40,
-        swir_band_index=140,
+        vnir_band_index=43,
+        swir_band_index=202,
     )
