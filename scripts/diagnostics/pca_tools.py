@@ -4,7 +4,7 @@ Principal component decomposition utilities and summary plotting.
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from sklearn.decomposition import PCA
@@ -116,6 +116,8 @@ def plot_pca_summary(
     wl: np.ndarray,
     outpath: str,
     max_maps: int = 6,
+    metadata_lines: Optional[List[str]] = None,
+    reference_wavelengths: Optional[Dict[str, Optional[float]]] = None,
 ) -> None:
     """Generate a PCA diagnostics figure summarising variance, components and residuals."""
 
@@ -125,9 +127,26 @@ def plot_pca_summary(
         ax.plot(wl, model.get("mean_spectrum", np.zeros_like(wl)), color="C0")
         ax.set_title("PCA skipped: insufficient valid pixels")
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Radiance")
+        ax.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
         ax.grid(alpha=0.3)
-        fig.tight_layout()
+        header_lines = list(metadata_lines) if metadata_lines else []
+        scene_label = header_lines[0] if header_lines else None
+        info_lines = header_lines[1:] if len(header_lines) > 1 else []
+        if scene_label:
+            fig.suptitle(scene_label, fontsize=11, y=0.98)
+        if info_lines:
+            fig.tight_layout(rect=[0, 0, 1, 0.82])
+            fig.text(
+                0.01,
+                0.97,
+                "\n".join(info_lines),
+                fontsize=8,
+                ha="left",
+                va="top",
+                bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"),
+            )
+        else:
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
         fig.savefig(outpath, dpi=150, bbox_inches="tight")
         plt.close(fig)
         return
@@ -136,7 +155,37 @@ def plot_pca_summary(
     mask = model.get("mask")
     n_maps = min(max_maps, scores_maps.shape[0])
 
+    references = reference_wavelengths or {}
+    header_lines = list(metadata_lines) if metadata_lines else []
+    scene_label = header_lines[0] if header_lines else None
+    info_lines = header_lines[1:] if len(header_lines) > 1 else []
+    target_vnir_nm = references.get("vnir_nm")
+    target_swir_nm = references.get("swir_nm")
+    tolerance_nm = 30.0
+
+    def _band_from_target(target_nm):
+        if target_nm is None or wl.size == 0:
+            return None
+        finite = np.isfinite(wl)
+        if not np.any(finite):
+            return None
+        finite_indices = np.flatnonzero(finite)
+        diffs = np.abs(wl[finite] - target_nm)
+        idx_local = int(np.argmin(diffs))
+        global_idx = int(finite_indices[idx_local])
+        if diffs[idx_local] > tolerance_nm:
+            return None
+        return global_idx
+
+    swir_idx = _band_from_target(target_swir_nm)
+    vnir_idx = _band_from_target(target_vnir_nm)
+
     fig = plt.figure(figsize=(13, 10))
+    base_title = "PCA summary"
+    if scene_label:
+        fig.suptitle(f"{scene_label}\n{base_title}", fontsize=11, y=0.99)
+    else:
+        fig.suptitle(base_title, fontsize=11, y=0.99)
     gs = gridspec.GridSpec(3, 3, figure=fig, height_ratios=[1.0, 1.0, 1.2])
 
     # Explained variance
@@ -169,35 +218,30 @@ def plot_pca_summary(
     ax_spec.grid(alpha=0.3)
     ax_spec.legend(ncol=2, fontsize=8)
 
-    # Residual band map (band with largest variance)
-    ax_res = fig.add_subplot(gs[1, 0])
-    band_var = np.nanvar(residual, axis=(1, 2))
-    band_idx = int(np.nanargmax(band_var))
-    res_band = residual[band_idx]
-    vmax = np.nanpercentile(np.abs(res_band), 99)
-    vmax = vmax if vmax > 0 else np.nanmax(np.abs(res_band))
-    vmax = vmax if np.isfinite(vmax) and vmax > 0 else 1.0
-    im = ax_res.imshow(res_band, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
-    ax_res.set_title(f"Residual band {band_idx + 1} ({wl[band_idx]:.1f} nm)")
-    ax_res.axis("off")
-    fig.colorbar(im, ax=ax_res, fraction=0.046, pad=0.04)
+    # Residual maps at reference wavelengths
+    ax_swir = fig.add_subplot(gs[1, 0])
+    ax_vnir = fig.add_subplot(gs[1, 1])
+    ax_specpix = fig.add_subplot(gs[1, 2])
 
-    # Residual RGB composite
-    ax_rgb = fig.add_subplot(gs[1, 1])
-    band_indices = np.linspace(0, residual.shape[0] - 1, num=3, dtype=int)
-    rgb = residual[band_indices].transpose(1, 2, 0)
-    scale = np.nanpercentile(np.abs(rgb), 99)
-    scale = scale if scale > 0 else np.nanmax(np.abs(rgb))
-    scale = scale if np.isfinite(scale) and scale > 0 else 1.0
-    rgb_vis = np.clip(rgb / (2 * scale) + 0.5, 0, 1)
-    if mask is not None:
-        rgb_vis = np.where(mask[..., None], rgb_vis, 0.5)
-    ax_rgb.imshow(rgb_vis)
-    ax_rgb.set_title("Residual RGB composite")
-    ax_rgb.axis("off")
+    def _plot_residual_map(ax, band_idx, label):
+        if band_idx is None:
+            ax.axis("off")
+            ax.set_title(f"{label} (not available)")
+            return
+        res_band = residual[band_idx]
+        vmax = np.nanpercentile(np.abs(res_band), 99)
+        vmax = vmax if vmax > 0 else np.nanmax(np.abs(res_band))
+        vmax = vmax if np.isfinite(vmax) and vmax > 0 else 1.0
+        im = ax.imshow(res_band, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+        ax.set_title(f"{label} {wl[band_idx]:.1f} nm")
+        ax.axis("off")
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+
+    _plot_residual_map(ax_swir, swir_idx, "Residual SWIR")
+    _plot_residual_map(ax_vnir, vnir_idx, "Residual VNIR")
 
     # Spectrum comparison for reference pixel
-    ax_specpix = fig.add_subplot(gs[1, 2])
     ref_pixel = model.get("reference_pixel", (residual.shape[1] // 2, residual.shape[2] // 2))
     rr, cc = ref_pixel
     orig_spec = cube[:, rr, cc]
@@ -208,7 +252,7 @@ def plot_pca_summary(
     ax_specpix.plot(wl, recon_spec, label="Reconstruction", lw=1.2)
     ax_specpix.plot(wl, resid_spec, label="Residual", lw=1.0)
     ax_specpix.set_xlabel("Wavelength (nm)")
-    ax_specpix.set_ylabel("Radiance")
+    ax_specpix.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
     ax_specpix.set_title(f"Spectrum at pixel ({rr}, {cc})")
     ax_specpix.grid(alpha=0.3)
     ax_specpix.legend(fontsize=8)
@@ -224,6 +268,18 @@ def plot_pca_summary(
         ax.set_title(f"PC{i + 1} scores", fontsize=9)
         ax.axis("off")
 
-    fig.tight_layout()
+    if info_lines:
+        fig.tight_layout(rect=[0, 0, 1, 0.8])
+        fig.text(
+            0.01,
+            0.96,
+            "\n".join(info_lines),
+            fontsize=8,
+            ha="left",
+            va="top",
+            bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"),
+        )
+    else:
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(outpath, dpi=150, bbox_inches="tight")
     plt.close(fig)

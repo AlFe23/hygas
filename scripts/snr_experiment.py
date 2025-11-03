@@ -12,7 +12,7 @@ import csv
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -20,6 +20,9 @@ from .core import noise, targets
 from .diagnostics import plots, pca_tools, striping
 from .satellites import enmap_utils, prisma_utils
 
+
+PRISMA_REFERENCE_BANDS = {"vnir_index": 43, "swir_index": 202}  # 1-based indices
+ENMAP_REFERENCE_BANDS = {"vnir_local_index": 60, "swir_local_index": 114}  # 1-based within VNIR/SWIR
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -103,6 +106,30 @@ def parse_args() -> argparse.Namespace:
         help="Disable FFT notch filtering (keep column equalization only).",
     )
     parser.add_argument(
+        "--equalize-scale-strength",
+        type=float,
+        default=0.3,
+        help="Blend factor (0–1) for per-column gain adjustment during equalization.",
+    )
+    parser.add_argument(
+        "--equalize-scale-cap",
+        type=float,
+        default=1.5,
+        help="Maximum gain adjustment factor during equalization (≥1).",
+    )
+    parser.add_argument(
+        "--disable-equalize",
+        action="store_true",
+        help="Skip per-column equalization (only optional notch is applied).",
+    )
+
+    parser.add_argument(
+        "--equalize-poly-order",
+        type=int,
+        default=2,
+        help="Polynomial order (>=0) subtracted per column to remove low-frequency trends (-1 disables).",
+    )
+    parser.add_argument(
         "--mask-frac",
         type=float,
         default=0.12,
@@ -167,9 +194,13 @@ class SceneData:
     wavelengths: np.ndarray
     scene_id: str
     metadata: Dict[str, str]
+    geometry_lines: List[str]
+    reference_wavelengths: Dict[str, Optional[float]]
 
 
-def resolve_prisma_path(path: str) -> str:
+def resolve_prisma_path(path: Optional[str]) -> Optional[str]:
+    if path is None:
+        return None
     abs_path = os.path.abspath(path)
     if abs_path.lower().endswith(".zip"):
         extracted = prisma_utils.extract_he5_from_zip(abs_path, os.path.dirname(abs_path))
@@ -187,7 +218,7 @@ def load_prisma_scene(inputs: Sequence[str]) -> SceneData:
     l2_candidate = inputs[1] if len(inputs) > 1 else None
 
     l1_path = resolve_prisma_path(l1_candidate)
-    l2_path = resolve_prisma_path(l2_candidate) if l2_candidate else None
+    l2_path = resolve_prisma_path(l2_candidate)
 
     cube, cw_matrix, *_ = prisma_utils.prisma_read(l1_path)
     cube_brc = np.transpose(cube, (2, 0, 1)).astype(np.float32)
@@ -199,6 +230,58 @@ def load_prisma_scene(inputs: Sequence[str]) -> SceneData:
         wl = cw_array
     wl = np.asarray(wl, dtype=float)
 
+    geometry_lines: List[str] = []
+    source_label = "Geometry angles (PRISMA: center statistics; relative = SZA−VZA, SAA−VAA)"
+    try:
+        sza = prisma_utils.prismaL1_SZA_read(l1_path)
+        geometry_lines.append(f"Sun zenith (L1 attr): {sza:.3f}°")
+    except Exception:
+        pass
+
+    if l2_path:
+        try:
+            summary = prisma_utils.prisma_l2c_geometry_summary(l2_path)
+            sun = summary.get("sun_angles", {})
+            if sun.get("zenith_deg") is not None:
+                geometry_lines.append(f"Sun zenith (L2C): {sun['zenith_deg']:.3f}°")
+            if sun.get("azimuth_deg") is not None:
+                geometry_lines.append(f"Sun azimuth (L2C): {sun['azimuth_deg']:.3f}°")
+
+            def _add_dataset(label: str, key: str):
+                ds = summary.get("datasets", {}).get(key)
+                if ds:
+                    stats = ds["stats"]
+                    geometry_lines.append(
+                        f"{label}: mean={stats['mean']:.3f}°, median={stats['median']:.3f}°, "
+                        f"min={stats['min']:.3f}°, max={stats['max']:.3f}°"
+                    )
+
+            _add_dataset("View zenith", "view_zenith")
+            _add_dataset("Solar zenith", "solar_zenith")
+            _add_dataset("Relative azimuth", "relative_azimuth")
+
+            rel_zen = summary.get("relative_zenith_stats") or summary.get("relative_zenith")
+            if rel_zen:
+                geometry_lines.append(
+                    f"Relative zenith (SZA−VZA): mean={rel_zen['mean']:.3f}°, median={rel_zen['median']:.3f}°"
+                )
+            rel_az = summary.get("relative_azimuth_stats") or summary.get("relative_azimuth_summary")
+            if rel_az:
+                geometry_lines.append(
+                    f"Relative azimuth (SAA−VAA): mean={rel_az['mean']:.3f}°, median={rel_az['median']:.3f}°"
+                )
+        except Exception:
+            pass
+
+    reference_wavelengths: Dict[str, Optional[float]] = {"vnir_nm": None, "swir_nm": None}
+    if wl.size:
+        vnir_idx = PRISMA_REFERENCE_BANDS["vnir_index"] - 1
+        swir_idx = PRISMA_REFERENCE_BANDS["swir_index"] - 1
+        if 0 <= vnir_idx < wl.size:
+            reference_wavelengths["vnir_nm"] = float(wl[vnir_idx])
+        if 0 <= swir_idx < wl.size:
+            reference_wavelengths["swir_nm"] = float(wl[swir_idx])
+
     scene_id = derive_scene_id(inputs, l1_candidate)
     metadata = {
         "l1": l1_candidate,
@@ -206,7 +289,18 @@ def load_prisma_scene(inputs: Sequence[str]) -> SceneData:
     if l2_candidate:
         metadata["l2c"] = l2_candidate
 
-    return SceneData(cube=cube_brc, wavelengths=wl, scene_id=scene_id, metadata=metadata)
+    if geometry_lines:
+        geometry_lines.insert(0, f"Geometry source: {source_label}")
+    geometry_lines.insert(0, f"Scene: {scene_id}")
+
+    return SceneData(
+        cube=cube_brc,
+        wavelengths=wl,
+        scene_id=scene_id,
+        metadata=metadata,
+        geometry_lines=geometry_lines,
+        reference_wavelengths=reference_wavelengths,
+    )
 
 
 def load_enmap_scene(inputs: Sequence[str]) -> SceneData:
@@ -231,13 +325,72 @@ def load_enmap_scene(inputs: Sequence[str]) -> SceneData:
     cube_brc = np.transpose(cube, (2, 0, 1)).astype(np.float32)
     wl = np.asarray(wl, dtype=float)
 
+    geometry_lines: List[str] = []
+    source_label = "Geometry angles (EnMAP metadata center values; relative = SZA−VZA, SAA−VAA)"
+    try:
+        geom = enmap_utils.enmap_scene_geometry(xml_file)
+
+        def _append(label: str, key: str):
+            val = geom.get(key)
+            if val is not None:
+                geometry_lines.append(f"{label}: {val:.3f}°")
+
+        _append("Viewing zenith (center)", "viewing_zenith_center")
+        _append("Viewing azimuth (center)", "viewing_azimuth_center")
+        _append("Sun zenith (center)", "sun_zenith_center")
+        _append("Sun azimuth (center)", "sun_azimuth_center")
+        _append("Along off-nadir", "along_off_nadir_center")
+        _append("Across off-nadir", "across_off_nadir_center")
+        if geom.get("relative_zenith_center") is not None:
+            geometry_lines.append(f"Relative zenith (SZA−VZA): {geom['relative_zenith_center']:.3f}°")
+        if geom.get("relative_azimuth_center") is not None:
+            rel = geom["relative_azimuth_center"]
+            abs_rel = geom.get("relative_azimuth_center_abs")
+            if abs_rel is not None:
+                geometry_lines.append(f"Relative azimuth (SAA−VAA): {rel:.3f}° (|…|={abs_rel:.3f}°)")
+            else:
+                geometry_lines.append(f"Relative azimuth (SAA−VAA): {rel:.3f}°")
+    except Exception:
+        pass
+
+    reference_wavelengths: Dict[str, Optional[float]] = {"vnir_nm": None, "swir_nm": None}
+    try:
+        vnir_meta, swir_meta = enmap_utils.parse_metadata_vnir_swir(xml_file)
+        if vnir_meta:
+            idx = min(
+                max(1, ENMAP_REFERENCE_BANDS["vnir_local_index"]), len(vnir_meta)
+            ) - 1
+            value = vnir_meta[idx].get("cw_nm", vnir_meta[idx].get("wavelength_center"))
+            if value is not None:
+                reference_wavelengths["vnir_nm"] = float(value)
+        if swir_meta:
+            idx = min(
+                max(1, ENMAP_REFERENCE_BANDS["swir_local_index"]), len(swir_meta)
+            ) - 1
+            value = swir_meta[idx].get("cw_nm", swir_meta[idx].get("wavelength_center"))
+            if value is not None:
+                reference_wavelengths["swir_nm"] = float(value)
+    except Exception:
+        pass
+
     metadata = {
         "vnir": vnir_file,
         "swir": swir_file,
         "metadata": xml_file,
     }
 
-    return SceneData(cube=cube_brc, wavelengths=wl, scene_id=scene_id, metadata=metadata)
+    if geometry_lines:
+        geometry_lines.insert(0, f"Geometry source: {source_label}")
+    geometry_lines.insert(0, f"Scene: {scene_id}")
+
+    return SceneData(
+        cube=cube_brc,
+        wavelengths=wl,
+        scene_id=scene_id,
+        metadata=metadata,
+        geometry_lines=geometry_lines,
+        reference_wavelengths=reference_wavelengths,
+    )
 
 
 def select_bands(cube: np.ndarray, wl: np.ndarray, band_range: Tuple[float, float]) -> Tuple[np.ndarray, np.ndarray]:
@@ -281,6 +434,8 @@ def run_cases(
     mask: np.ndarray,
     args: argparse.Namespace,
     outdir: Path,
+    metadata_lines: Optional[List[str]],
+    reference_wavelengths: Dict[str, Optional[float]],
 ) -> Dict[str, Dict[str, object]]:
     diff_axis = 1 if args.diff_axis == "columns" else 0
     cases_requested = [c.strip().upper() for c in args.cases.split(",") if c.strip()]
@@ -356,6 +511,8 @@ def run_cases(
         resid_plain,
         wl,
         outdir / "pca_summary_plain.png",
+        metadata_lines=metadata_lines,
+        reference_wavelengths=reference_wavelengths,
     )
     pca_tools.plot_pca_summary(
         model_ds,
@@ -364,6 +521,8 @@ def run_cases(
         resid_ds,
         wl,
         outdir / "pca_summary_destriped.png",
+        metadata_lines=metadata_lines,
+        reference_wavelengths=reference_wavelengths,
     )
 
     return results
@@ -397,12 +556,25 @@ def main():
         attenuation_db=args.destripe_atten_db,
         min_peak_db=args.destripe_min_peak_db,
         use_notch=not args.disable_notch,
+        scale_strength=args.equalize_scale_strength,
+        scale_cap=args.equalize_scale_cap,
+        poly_order=args.equalize_poly_order,
+        enable_equalize=not args.disable_equalize,
     )
 
     outdir = Path(args.outdir) / args.sensor / scene.scene_id
     outdir.mkdir(parents=True, exist_ok=True)
 
-    results = run_cases(wl, cube_plain, cube_ds, mask, args, outdir)
+    results = run_cases(
+        wl,
+        cube_plain,
+        cube_ds,
+        mask,
+        args,
+        outdir,
+        scene.geometry_lines,
+        scene.reference_wavelengths,
+    )
 
     # Striping diagnostics
     peak_scores = []
@@ -427,11 +599,18 @@ def main():
         info.get("f0_destriped"),
         outdir / "striping_diagnostics.png",
         destripe_label,
+        metadata_lines=scene.geometry_lines,
     )
 
     # Overview plot
     curves = [results[k] for k in sorted(results)]
-    plots.plot_snr_cases(wl, curves, f"{args.sensor.upper()} scene {scene.scene_id}", outdir / "snr_cases_overview.png")
+    plots.plot_snr_cases(
+        wl,
+        curves,
+        f"{args.sensor.upper()} scene {scene.scene_id}",
+        outdir / "snr_cases_overview.png",
+        metadata_lines=scene.geometry_lines,
+    )
 
     print(f"SNR experiment completed. Outputs stored in {outdir}")
 

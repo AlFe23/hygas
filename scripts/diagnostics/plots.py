@@ -4,7 +4,7 @@ Plotting helpers for striping diagnostics and SNR case comparisons.
 
 from __future__ import annotations
 
-from typing import Iterable, List, Mapping
+from typing import Iterable, List, Mapping, Optional
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -33,6 +33,7 @@ def plot_striping_diagnostics(
     f0_ds: float | None,
     outpath: str,
     destripe_label: str,
+    metadata_lines: Optional[List[str]] = None,
 ) -> None:
     """Visualise striping mitigation before/after destriping."""
 
@@ -47,15 +48,17 @@ def plot_striping_diagnostics(
 
     ax_plain = fig.add_subplot(gs[0, 0])
     im0 = ax_plain.imshow(plain_band, cmap="viridis", vmin=vmin, vmax=vmax)
-    ax_plain.set_title("Plain band")
+    ax_plain.set_title("Plain radiance")
     ax_plain.axis("off")
-    fig.colorbar(im0, ax=ax_plain, fraction=0.046, pad=0.04)
+    cbar0 = fig.colorbar(im0, ax=ax_plain, fraction=0.046, pad=0.04)
+    cbar0.set_label("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
 
     ax_ds = fig.add_subplot(gs[0, 1])
     im1 = ax_ds.imshow(destriped_band, cmap="viridis", vmin=vmin, vmax=vmax)
-    ax_ds.set_title("Destriped band")
+    ax_ds.set_title("Destriped radiance")
     ax_ds.axis("off")
-    fig.colorbar(im1, ax=ax_ds, fraction=0.046, pad=0.04)
+    cbar1 = fig.colorbar(im1, ax=ax_ds, fraction=0.046, pad=0.04)
+    cbar1.set_label("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
 
     mean_plain, std_plain = _column_stats(plain_band, mask)
     mean_ds, std_ds = _column_stats(destriped_band, mask)
@@ -64,18 +67,18 @@ def plot_striping_diagnostics(
     ax_mean = fig.add_subplot(gs[1, 0])
     ax_mean.plot(cols, mean_plain, label="Plain", alpha=0.8)
     ax_mean.plot(cols, mean_ds, label="Destriped", alpha=0.8)
-    ax_mean.set_title("Per-column mean radiance")
+    ax_mean.set_title("Column mean (radiance)")
     ax_mean.set_xlabel("Column index")
-    ax_mean.set_ylabel("Radiance")
+    ax_mean.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
     ax_mean.grid(alpha=0.3)
     ax_mean.legend()
 
     ax_std = fig.add_subplot(gs[1, 1])
     ax_std.plot(cols, std_plain, label="Plain", alpha=0.8)
     ax_std.plot(cols, std_ds, label="Destriped", alpha=0.8)
-    ax_std.set_title("Per-column σ")
+    ax_std.set_title("Column σ (radiance)")
     ax_std.set_xlabel("Column index")
-    ax_std.set_ylabel("σ")
+    ax_std.set_ylabel("σ (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
     ax_std.grid(alpha=0.3)
     ax_std.legend()
 
@@ -99,12 +102,32 @@ def plot_striping_diagnostics(
 
     ax_pow.set_xlabel("Frequency (cycles/pixel)")
     ax_pow.set_ylabel("Power (dB)")
-    ax_pow.set_title("Across-track power spectrum")
+    ax_pow.set_title("Row-wise FFT power (across-track)")
     ax_pow.grid(alpha=0.3)
     ax_pow.legend()
 
-    fig.suptitle(destripe_label, fontsize=12, y=0.98)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    header_lines = list(metadata_lines) if metadata_lines else []
+    scene_label = header_lines[0] if header_lines else None
+    info_lines = header_lines[1:] if len(header_lines) > 1 else []
+
+    title_lines = [destripe_label]
+    if scene_label:
+        title_lines.insert(0, scene_label)
+    fig.suptitle("\n".join(title_lines), fontsize=12, y=0.92)
+
+    if info_lines:
+        fig.tight_layout(rect=[0, 0, 1, 0.8])
+        fig.text(
+            0.01,
+            0.98,
+            "\n".join(info_lines),
+            fontsize=8,
+            ha="left",
+            va="top",
+            bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"),
+        )
+    else:
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(outpath, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -114,6 +137,7 @@ def plot_snr_cases(
     curves: Iterable[Mapping[str, np.ndarray | str]],
     title: str,
     outpath: str,
+    metadata_lines: Optional[List[str]] = None,
 ) -> None:
     """Plot median and P90 SNR curves for cases A–H."""
 
@@ -146,7 +170,25 @@ def plot_snr_cases(
 
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper right")
-    fig.suptitle(title, fontsize=14)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    header_lines = list(metadata_lines) if metadata_lines else []
+    scene_label = header_lines[0] if header_lines else None
+    info_lines = header_lines[1:] if len(header_lines) > 1 else []
+    if scene_label:
+        fig.suptitle(f"{title}\n{scene_label}", fontsize=14, y=0.9)
+    else:
+        fig.suptitle(title, fontsize=14, y=0.9)
+    if info_lines:
+        fig.tight_layout(rect=[0, 0, 1, 0.78])
+        fig.text(
+            0.01,
+            0.97,
+            "\n".join(info_lines),
+            fontsize=8,
+            ha="left",
+            va="top",
+            bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"),
+        )
+    else:
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(outpath, dpi=150, bbox_inches="tight")
     plt.close(fig)

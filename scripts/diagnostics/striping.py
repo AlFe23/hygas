@@ -14,7 +14,13 @@ from scipy.signal.windows import hann
 from ..core.noise import EPS
 
 
-def equalize_columns(img2d: np.ndarray, mask: Optional[np.ndarray] = None) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+def equalize_columns(
+    img2d: np.ndarray,
+    mask: Optional[np.ndarray] = None,
+    scale_strength: float = 0.3,
+    scale_cap: float = 1.5,
+    poly_order: int = 2,
+) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """
     Apply robust per-column gain/offset normalisation.
 
@@ -50,7 +56,8 @@ def equalize_columns(img2d: np.ndarray, mask: Optional[np.ndarray] = None) -> Tu
     col_scale = np.ones(cols, dtype=float)
 
     mad_floor = max(global_mad * 0.05, 1e-6)
-    scale_cap = 5.0
+    scale_cap = max(scale_cap, 1.0)
+    scale_strength = np.clip(scale_strength, 0.0, 1.0)
 
     for c in range(cols):
         col_mask = mask_bool[:, c]
@@ -61,17 +68,29 @@ def equalize_columns(img2d: np.ndarray, mask: Optional[np.ndarray] = None) -> Tu
         med = np.nanmedian(values[col_mask])
         mad = np.nanmedian(np.abs(values[col_mask] - med)) + EPS
 
-        if mad < mad_floor or not np.isfinite(mad):
-            scale = 1.0
-            adjusted[:, c] = global_med + (values - med)
-        else:
-            scale = global_mad / mad
-            scale = float(np.clip(scale, 1.0 / scale_cap, scale_cap))
-            adjusted[:, c] = global_med + (values - med) * scale
+        centered = values - med
+        column = global_med + centered
+
+        scale = 1.0
+        if (mad >= mad_floor) and np.isfinite(mad) and scale_strength > 0.0:
+            ratio = float(np.clip(global_mad / mad, 1.0 / scale_cap, scale_cap))
+            scale = 1.0 + scale_strength * (ratio - 1.0)
+            column = global_med + centered * scale
+
+        if poly_order >= 0:
+            valid_rows = np.nonzero(col_mask & np.isfinite(column))[0]
+            if valid_rows.size > poly_order + 1:
+                x = valid_rows.astype(float)
+                y = column[valid_rows]
+                coeffs = np.polyfit(x, y, deg=poly_order)
+                trend = np.polyval(coeffs, np.arange(rows, dtype=float))
+                trend_mean = np.nanmean(trend[valid_rows])
+                column = np.where(col_mask, column - trend + trend_mean, column)
 
         col_med[c] = med
         col_mad[c] = mad
         col_scale[c] = scale
+        adjusted[:, c] = column
 
     stats = {
         "col_median": col_med,
@@ -80,6 +99,9 @@ def equalize_columns(img2d: np.ndarray, mask: Optional[np.ndarray] = None) -> Tu
         "global_mad": np.array([global_mad]),
         "col_scale": col_scale,
         "mad_floor": mad_floor,
+        "scale_strength": scale_strength,
+        "scale_cap": scale_cap,
+        "poly_order": poly_order,
     }
     return adjusted, stats
 
@@ -191,6 +213,8 @@ def fft_notch_rowwise(
     return filtered
 
 
+
+
 def light_destripe_band(
     img2d: np.ndarray,
     mask: Optional[np.ndarray] = None,
@@ -198,13 +222,38 @@ def light_destripe_band(
     attenuation_db: float = 30.0,
     min_peak_db: float = 5.0,
     use_notch: bool = True,
+    scale_strength: float = 0.3,
+    scale_cap: float = 1.5,
+    poly_order: int = 2,
+    enable_equalize: bool = True,
 ) -> Tuple[np.ndarray, Dict[str, object]]:
     """
     Apply column equalisation and (optionally) an FFT notch if a narrow stripe
     peak is detected.
     """
 
-    equalised, stats = equalize_columns(img2d, mask=mask)
+    if enable_equalize:
+        equalised, stats = equalize_columns(
+            img2d,
+            mask=mask,
+            scale_strength=scale_strength,
+            scale_cap=scale_cap,
+            poly_order=poly_order,
+        )
+    else:
+        equalised = img2d.astype(float)
+        stats = {
+            "equalization_skipped": True,
+            "col_median": None,
+            "col_mad": None,
+            "global_median": None,
+            "global_mad": None,
+            "col_scale": None,
+            "mad_floor": None,
+            "scale_strength": 0.0,
+            "scale_cap": 1.0,
+            "poly_order": -1,
+        }
     fft_plain = detect_stripe_frequency(img2d, mask=mask)
 
     fft_eq = detect_stripe_frequency(equalised, mask=mask)
@@ -229,6 +278,7 @@ def light_destripe_band(
         "f0_plain": fft_plain.get("peak_freq"),
         "f0_destriped": fft_ds.get("peak_freq"),
         "destripe_mode": destripe_mode,
+        "equalization_enabled": enable_equalize,
     }
     return destriped, info
 
@@ -240,6 +290,10 @@ def light_destripe_cube(
     attenuation_db: float = 30.0,
     min_peak_db: float = 5.0,
     use_notch: bool = True,
+    scale_strength: float = 0.3,
+    scale_cap: float = 1.5,
+    poly_order: int = 2,
+    enable_equalize: bool = True,
 ) -> Tuple[np.ndarray, List[Dict[str, object]]]:
     """
     Apply light destriping band-by-band to a cube shaped (bands, rows, cols).
@@ -257,6 +311,10 @@ def light_destripe_cube(
             attenuation_db=attenuation_db,
             min_peak_db=min_peak_db,
             use_notch=use_notch,
+            scale_strength=scale_strength,
+            scale_cap=scale_cap,
+            poly_order=poly_order,
+            enable_equalize=enable_equalize,
         )
         destriped[b] = clean
         diagnostics.append(info)
