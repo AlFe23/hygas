@@ -11,7 +11,7 @@ from datetime import datetime
 import numpy as np
 from osgeo import gdal
 
-from scripts.core import matched_filter, targets, lut, io_utils  # type: ignore
+from scripts.core import matched_filter, targets, lut, io_utils, noise  # type: ignore
 from scripts.satellites import enmap_utils  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ def ch4_detection_enmap(
     k=10,
     min_wavelength=2100.0,
     max_wavelength=2450.0,
+    snr_reference_path: str | None = None,
 ):
     # Ensure output directory exists
     if not os.path.exists(output_dir):
@@ -111,6 +112,7 @@ def ch4_detection_enmap(
 
     target_spectra_export_name = os.path.join(output_dir, f"{output_basename}_CH4_target.npy")
     concentration_output_file = os.path.join(output_dir, f"{output_basename}_MF.tif")
+    uncertainty_output_file = os.path.join(output_dir, f"{output_basename}_MF_uncertainty.tif")
     rgb_output_file = os.path.join(output_dir, f"{output_basename}_RGB.tif")
     classified_output_file = os.path.join(output_dir, f"{output_basename}_CL.tif")
 
@@ -162,9 +164,37 @@ def ch4_detection_enmap(
         rads_array_subselection, classified_image, mean_radiance, covariance_matrices, target_spectra, k
     )
 
+    snr_reference_path = snr_reference_path or os.environ.get("ENMAP_SNR_REFERENCE")
+    if not snr_reference_path:
+        raise RuntimeError(
+            "EnMAP SNR reference not provided. "
+            "Set the path via snr_reference_path parameter or ENMAP_SNR_REFERENCE environment variable."
+        )
+    logger.info("Loading EnMAP SNR reference from %s", snr_reference_path)
+    reference = noise.ColumnwiseSNRReference.load(snr_reference_path)
+    reference_subset = reference.subset_by_wavelengths(cw_subselection).ensure_column_count(
+        rads_array_subselection.shape[1]
+    )
+    rad_cube_brc = np.transpose(rads_array_subselection, (2, 0, 1))
+    sigma_cube = noise.compute_sigma_map_from_reference(reference_subset, rad_cube_brc)
+    sigma_rmn = noise.propagate_rmn_uncertainty(
+        sigma_cube=sigma_cube,
+        classified_image=classified_image,
+        mean_radiance=mean_radiance,
+        target_spectra=target_spectra,
+    ).astype(np.float32)
+
+    logger.info(
+        "σ_RMN (instrument noise) — min: %.4f, median: %.4f, max: %.4f",
+        float(np.nanmin(sigma_rmn)),
+        float(np.nanmedian(sigma_rmn)),
+        float(np.nanmax(sigma_rmn)),
+    )
+
     reference_dataset = gdal.Open(swir_file)
 
     enmap_utils.save_as_geotiff_single_band_enmap(concentration_map, concentration_output_file, reference_dataset)
+    enmap_utils.save_as_geotiff_single_band_enmap(sigma_rmn, uncertainty_output_file, reference_dataset)
     enmap_utils.save_as_geotiff_rgb_enmap(rgb_image, rgb_output_file, reference_dataset)
     enmap_utils.save_as_geotiff_single_band_enmap(classified_image, classified_output_file, reference_dataset)
 
@@ -188,6 +218,7 @@ def ch4_detection_enmap(
         rgb_output_file=rgb_output_file,
         classified_output_file=classified_output_file,
         target_spectra_file=target_spectra_export_name,
+        uncertainty_output_file=uncertainty_output_file,
     )
 
 

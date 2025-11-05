@@ -8,8 +8,10 @@ previously embedded in the individual SNR scripts. Functions operate on data
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict, Optional, Sequence
 
 import numpy as np
 
@@ -21,6 +23,7 @@ except Exception:  # pragma: no cover - optional
 from scipy.ndimage import binary_closing, binary_opening, gaussian_filter, gaussian_filter1d
 
 EPS = 1e-12
+MIN_SIGMA = 1e-3
 
 
 def build_homogeneous_mask_auto(
@@ -350,3 +353,332 @@ def snr_columnwise(
         },
     )
 
+
+@dataclass
+class ColumnwiseSNRReference:
+    """
+    Container for column-wise SNR reference information derived from a homogeneous scene.
+
+    Attributes
+    ----------
+    band_nm : np.ndarray
+        Wavelength per band (nm) with shape (bands,).
+    mean_radiance : np.ndarray
+        Reference mean radiance per band/column with shape (bands, columns).
+    snr : np.ndarray
+        Reference signal-to-noise ratio per band/column with shape (bands, columns).
+    valid_columns : np.ndarray
+        Indices of detector columns that were directly observed when deriving the reference.
+    metadata : Dict[str, object] | None
+        Optional metadata captured when the reference dataset was generated.
+    """
+
+    band_nm: np.ndarray
+    mean_radiance: np.ndarray
+    snr: np.ndarray
+    valid_columns: np.ndarray
+    metadata: Optional[Dict[str, object]] = None
+    band_indices: Optional[np.ndarray] = None
+
+    def __post_init__(self) -> None:
+        bands = np.asarray(self.band_nm, dtype=float).shape[0]
+        mean_shape = np.asarray(self.mean_radiance).shape
+        snr_shape = np.asarray(self.snr).shape
+        if mean_shape != snr_shape:
+            raise ValueError(
+                f"mean_radiance shape {mean_shape} and snr shape {snr_shape} must match (bands, columns)."
+            )
+        if mean_shape[0] != bands:
+            raise ValueError(
+                f"First dimension of radiance/SNR arrays {mean_shape[0]} does not match band_nm length {bands}."
+            )
+
+        self.band_nm = np.asarray(self.band_nm, dtype=float)
+        self.mean_radiance = np.asarray(self.mean_radiance, dtype=float)
+        self.snr = np.asarray(self.snr, dtype=float)
+        self.valid_columns = np.asarray(self.valid_columns, dtype=int)
+        if self.band_indices is None:
+            self.band_indices = np.arange(bands, dtype=int)
+        else:
+            self.band_indices = np.asarray(self.band_indices, dtype=int)
+            if self.band_indices.shape[0] != bands:
+                raise ValueError(
+                    f"band_indices length {self.band_indices.shape[0]} does not match band count {bands}."
+                )
+        if self.metadata is not None and not isinstance(self.metadata, dict):
+            raise TypeError("metadata must be a dict if provided.")
+
+    @property
+    def sigma(self) -> np.ndarray:
+        """Return reference noise sigma per band/column (µW cm⁻² sr⁻¹ nm⁻¹)."""
+
+        return np.divide(
+            self.mean_radiance,
+            np.clip(self.snr, EPS, None),
+            out=np.full_like(self.mean_radiance, np.nan, dtype=float),
+        )
+
+    def subset_bands(self, band_indices: Sequence[int]) -> "ColumnwiseSNRReference":
+        """Return a new reference limited to the provided band indices."""
+
+        idx = np.asarray(band_indices, dtype=int)
+        return ColumnwiseSNRReference(
+            band_nm=self.band_nm[idx],
+            mean_radiance=self.mean_radiance[idx, :],
+            snr=self.snr[idx, :],
+            valid_columns=self.valid_columns,
+            metadata=self.metadata,
+            band_indices=self.band_indices[idx],
+        )
+
+    def subset_by_wavelengths(
+        self,
+        wavelengths: Sequence[float],
+        *,
+        atol: float = 1,
+    ) -> "ColumnwiseSNRReference":
+        """
+        Return a reference restricted to the provided wavelength grid.
+
+        Parameters
+        ----------
+        wavelengths : Sequence[float]
+            Target wavelengths (nm). Each will be matched against the stored
+            reference wavelengths; the nearest band within ``atol`` nanometers
+            is selected.
+        atol : float
+            Maximum allowed absolute difference (nm) between the requested
+            wavelength and the reference band centre. Increase if the sensor
+            wavelengths differ slightly between scenes.
+        """
+
+        target = np.asarray(wavelengths, dtype=float)
+        if target.ndim != 1:
+            raise ValueError("wavelengths must be a 1-D array.")
+
+        ref_wl = self.band_nm
+        indices = np.empty(target.size, dtype=int)
+        for i, wl in enumerate(target):
+            band_idx = int(np.argmin(np.abs(ref_wl - wl)))
+            delta = abs(ref_wl[band_idx] - wl)
+            if delta > atol:
+                raise ValueError(
+                    f"No reference band within {atol} nm for wavelength {wl:.3f} nm (closest offset {delta:.3f} nm)."
+                )
+            indices[i] = band_idx
+
+        return ColumnwiseSNRReference(
+            band_nm=ref_wl[indices],
+            mean_radiance=self.mean_radiance[indices, :],
+            snr=self.snr[indices, :],
+            valid_columns=self.valid_columns,
+            metadata=self.metadata,
+            band_indices=self.band_indices[indices],
+        )
+
+    def subset_by_band_numbers(self, band_numbers: Sequence[int]) -> "ColumnwiseSNRReference":
+        """
+        Return a reference restricted to the provided detector band indices.
+        """
+
+        band_numbers = np.asarray(band_numbers, dtype=int)
+        if band_numbers.ndim != 1:
+            raise ValueError("band_numbers must be a 1-D array.")
+
+        lookup = {int(bn): idx for idx, bn in enumerate(self.band_indices)}
+        positions: list[int] = []
+        missing: list[int] = []
+        for bn in band_numbers:
+            idx = lookup.get(int(bn))
+            if idx is None:
+                missing.append(int(bn))
+            else:
+                positions.append(idx)
+        if missing:
+            raise ValueError(f"Reference missing detector bands: {missing}")
+        pos_arr = np.asarray(positions, dtype=int)
+        return ColumnwiseSNRReference(
+            band_nm=self.band_nm[pos_arr],
+            mean_radiance=self.mean_radiance[pos_arr, :],
+            snr=self.snr[pos_arr, :],
+            valid_columns=self.valid_columns,
+            metadata=self.metadata,
+            band_indices=self.band_indices[pos_arr],
+        )
+
+    def ensure_column_count(self, target_cols: int) -> "ColumnwiseSNRReference":
+        """
+        Return a reference whose column dimension matches `target_cols`.
+
+        Data are resampled along the across-track dimension using linear interpolation
+        when the requested number of columns differs from the stored reference.
+        """
+
+        current_cols = self.mean_radiance.shape[1]
+        if current_cols == target_cols:
+            return self
+
+        src = np.linspace(0.0, 1.0, current_cols)
+        dst = np.linspace(0.0, 1.0, target_cols)
+
+        def _resample(arr: np.ndarray) -> np.ndarray:
+            out = np.empty((arr.shape[0], target_cols), dtype=float)
+            for i in range(arr.shape[0]):
+                row = arr[i]
+                mask = np.isfinite(row)
+                if not mask.any():
+                    out[i] = 0.0
+                    continue
+                filled = row.copy()
+                # Replace NaNs with nearest valid values before interpolation
+                if not mask.all():
+                    valid_idx = np.flatnonzero(mask)
+                    filled = np.interp(np.arange(row.size), valid_idx, row[mask])
+                out[i] = np.interp(dst, src, filled)
+            return out
+
+        mean_resampled = _resample(self.mean_radiance)
+        snr_resampled = _resample(self.snr)
+        return ColumnwiseSNRReference(
+            band_nm=self.band_nm,
+            mean_radiance=mean_resampled,
+            snr=snr_resampled,
+            valid_columns=np.round(dst * (target_cols - 1)).astype(int),
+            metadata=self.metadata,
+        )
+
+    def save(self, path: str | Path) -> None:
+        """Persist the reference dataset to disk as a compressed NPZ archive."""
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_json = json.dumps(self.metadata or {})
+        np.savez_compressed(
+            path,
+            band_nm=self.band_nm.astype(np.float32),
+            mean_radiance=self.mean_radiance.astype(np.float32),
+            snr=self.snr.astype(np.float32),
+            valid_columns=self.valid_columns.astype(np.int32),
+            metadata_json=metadata_json,
+            band_indices=self.band_indices.astype(np.int32),
+        )
+
+    @classmethod
+    def load(cls, path: str | Path) -> "ColumnwiseSNRReference":
+        """Load a reference dataset previously stored via :meth:`save`."""
+
+        path = Path(path)
+        with np.load(path, allow_pickle=False) as npz:
+            metadata_json = npz.get("metadata_json")
+            if metadata_json is None:
+                metadata = None
+            else:
+                if isinstance(metadata_json, np.ndarray):
+                    metadata_str = metadata_json.item()
+                else:
+                    metadata_str = str(metadata_json)
+                metadata = json.loads(metadata_str) if metadata_str else None
+            band_indices = npz.get("band_indices")
+            if band_indices is None:
+                band_indices = None
+            return cls(
+                band_nm=npz["band_nm"],
+                mean_radiance=npz["mean_radiance"],
+                snr=npz["snr"],
+                valid_columns=npz["valid_columns"],
+                metadata=metadata,
+                band_indices=band_indices,
+            )
+
+
+def compute_sigma_map_from_reference(
+    reference: ColumnwiseSNRReference,
+    radiance_cube: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute per-pixel noise sigma (σ_MN) via radiance scaling from a reference SNR dataset.
+
+    Parameters
+    ----------
+    reference : ColumnwiseSNRReference
+        Column-wise reference dataset containing band-specific SNR and mean radiance.
+    radiance_cube : np.ndarray
+        Scene radiance cube shaped as (bands, rows, cols) matching the wavelength sampling
+        of the reference.
+
+    Returns
+    -------
+    np.ndarray
+        σ_MN cube with the same shape as `radiance_cube`.
+    """
+
+    if radiance_cube.ndim != 3:
+        raise ValueError("radiance_cube must be shaped as (bands, rows, cols).")
+
+    bands, rows, cols = radiance_cube.shape
+    ref = reference.ensure_column_count(cols)
+    if ref.band_nm.shape[0] != bands:
+        raise ValueError(
+            f"Band count mismatch between radiance cube ({bands}) and reference ({ref.band_nm.shape[0]})."
+        )
+
+    ref_mu = np.clip(ref.mean_radiance[:, None, :], EPS, None)
+    ref_snr = np.clip(ref.snr[:, None, :], EPS, None)
+
+    positive_radiance = np.clip(radiance_cube, a_min=0.0, a_max=None)
+    scale = np.sqrt(positive_radiance / ref_mu)
+    np.clip(scale, 0.1, None, out=scale)
+    snr_scene = ref_snr * scale
+    sigma_mn = np.divide(
+        radiance_cube,
+        np.clip(snr_scene, EPS, None),
+        out=np.zeros_like(radiance_cube, dtype=float),
+    ).astype(np.float64)
+    np.clip(sigma_mn, MIN_SIGMA, None, out=sigma_mn)
+    return sigma_mn
+
+
+def propagate_rmn_uncertainty(
+    sigma_cube: np.ndarray,
+    classified_image: np.ndarray,
+    mean_radiance: np.ndarray,
+    target_spectra: np.ndarray,
+) -> np.ndarray:
+    """
+    Propagate matched-filter noise to per-pixel methane uncertainty via Roger et al. (σ_RMN).
+    """
+    bands, rows, cols = sigma_cube.shape
+    k = mean_radiance.shape[0]
+    result = np.full((rows, cols), np.nan, dtype=float)
+
+    # This is a simplified calculation that assumes a diagonal noise covariance matrix
+    # It is equivalent to: denom = t.T @ np.linalg.inv(C_N) @ t
+    # where C_N is diagonal with sigma_cube**2 on the diagonal.
+
+    if target_spectra.ndim == 1:  # EnMAP case
+        t_lookup = mean_radiance * target_spectra[None, :]
+        for cls in range(k):
+            class_mask = (classified_image == cls)
+            if not np.any(class_mask):
+                continue
+            
+            t_vec = t_lookup[cls]
+            # The denominator of the uncertainty equation
+            denom = np.sum(t_vec[:, np.newaxis]**2 / (sigma_cube[:, class_mask]**2), axis=0)
+            result[class_mask] = 1.0 / np.sqrt(np.clip(denom, 1e-12, None))
+
+    else:  # PRISMA case
+        for c in range(cols):
+            for cls in range(k):
+                class_mask = (classified_image[:, c] == cls)
+                if not np.any(class_mask):
+                    continue
+
+                t_vec = mean_radiance[cls] * target_spectra[:, c]
+                sigma_pix = sigma_cube[:, class_mask, c]
+                
+                # The denominator of the uncertainty equation
+                denom = np.sum(t_vec[:, np.newaxis]**2 / (sigma_pix**2), axis=0)
+                result[class_mask, c] = 1.0 / np.sqrt(np.clip(denom, 1e-12, None))
+
+    return result

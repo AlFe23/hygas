@@ -18,6 +18,7 @@ def generate_prisma_report(
     k,
     mf_output_file,
     concentration_output_file,
+    uncertainty_output_file,
     rgb_output_file,
     classified_output_file,
     min_wavelength,
@@ -62,6 +63,7 @@ def generate_prisma_report(
     Output Files:
     - Matched Filter Output: {mf_output_file}
     - Concentration Map Output: {concentration_output_file}
+    - Instrument Noise Uncertainty Map: {uncertainty_output_file}
     - RGB Image Output: {rgb_output_file}
     - Classified Image Output: {classified_output_file}
 
@@ -93,6 +95,7 @@ def generate_enmap_report(
     min_wavelength,
     max_wavelength,
     concentration_output_file,
+    uncertainty_output_file,
     rgb_output_file,
     classified_output_file,
     target_spectra_file,
@@ -115,6 +118,7 @@ def generate_enmap_report(
 
     Output Files:
     - Matched Filter Output: {concentration_output_file}
+    - Instrument Noise Uncertainty Map: {uncertainty_output_file}
     - RGB Image Output: {rgb_output_file}
     - Classified Image Output: {classified_output_file}
     - Target Spectrum (NPY): {target_spectra_file}

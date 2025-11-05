@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Reference SNR paths (update after regenerating reference notebooks)
+export PRISMA_SNR_REFERENCE="/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz"
+export ENMAP_SNR_REFERENCE="/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/notebooks/outputs/enmap/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/snr_reference_columnwise.npz"
+
 # PRISMA batch test
 echo "Running PRISMA batch test..."
 python scripts/main.py \
   --satellite prisma --mode batch \
-  --root-directory /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/prisma/20240911071151 \
+  --root-directory /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/prisma/Northern_State_Sudan_20200401 \
   --dem /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/DEM_1Km/srtm30plus_v11_land.nc \
   --lut /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/LUTs/CH4_lut.hdf5 \
   --min-wavelength 2100 \
@@ -19,8 +23,8 @@ python scripts/main.py \
 echo "Running PRISMA scene test..."
 python scripts/main.py \
   --satellite prisma --mode scene \
-  --l1 /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/prisma/20240911071151/PRS_L1_STD_OFFL_20240911071151_20240911071155_0001.zip \
-  --l2c /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/prisma/20240911071151/PRS_L2C_STD_20240911071151_20240911071155_0001.zip \
+  --l1 /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/prisma/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L1_STD_OFFL_20200401085313_20200401085318_0001.zip \
+  --l2c /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/prisma/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L2C_STD_20200401085313_20200401085318_0001.zip \
   --dem /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/DEM_1Km/srtm30plus_v11_land.nc \
   --lut /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/LUTs/CH4_lut.hdf5 \
   --min-wavelength 2100 \
@@ -34,9 +38,9 @@ python scripts/main.py \
 echo "Running EnMAP scene test..."
 python scripts/main.py \
   --satellite enmap --mode scene \
-  --vnir /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap/ENMAP01-____L1B-DT0000092488_20240911T075547Z_001_V010502_20241207T112410Z/ENMAP01-____L1B-DT0000092488_20240911T075547Z_001_V010502_20241207T112410Z-SPECTRAL_IMAGE_VNIR.TIF \
-  --swir /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap/ENMAP01-____L1B-DT0000092488_20240911T075547Z_001_V010502_20241207T112410Z/ENMAP01-____L1B-DT0000092488_20240911T075547Z_001_V010502_20241207T112410Z-SPECTRAL_IMAGE_SWIR.TIF \
-  --metadata /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap/ENMAP01-____L1B-DT0000092488_20240911T075547Z_001_V010502_20241207T112410Z/ENMAP01-____L1B-DT0000092488_20240911T075547Z_001_V010502_20241207T112410Z-METADATA.XML \
+  --vnir /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap/Agadez_Niger_20220712/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/ENMAP01-____L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z-SPECTRAL_IMAGE_VNIR.TIF \
+  --swir /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap/Agadez_Niger_20220712/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/ENMAP01-____L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z-SPECTRAL_IMAGE_SWIR.TIF \
+  --metadata /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap/Agadez_Niger_20220712/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/ENMAP01-____L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z-METADATA.XML \
   --lut /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/LUTs/CH4_lut.hdf5 \
   --k 1 \
   --min-wavelength 2150 \
@@ -48,7 +52,7 @@ python scripts/main.py \
 echo "Running EnMAP batch test..."
 python scripts/main.py \
   --satellite enmap --mode batch \
-  --root-directory /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap \
+  --root-directory /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/test_data/enmap/Agadez_Niger_20220712 \
   --lut /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/LUTs/CH4_lut.hdf5 \
   --k 1 \
   --min-wavelength 2150 \
@@ -90,7 +94,5 @@ echo "Inspecting PRISMA HDF structure..."
 python scripts/inspect_prisma_hdf.py \
   "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/PRISMA_calibration_data/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L2C_STD_20200401085313_20200401085318_0001.zip" \
   --max-depth 5 --attrs --output /mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/SNR/PRISMA_calibration_data/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L2C_STD_20200401085313_20200401085318_0001_structure.txt
-
-
 
 
