@@ -431,6 +431,9 @@ def save_as_geotiff_single_band_enmap(data, output_file, reference_dataset):
         "BLOCKXSIZE=256",
         "BLOCKYSIZE=256",
     ]
+    if os.path.exists(output_file):
+        # GDAL refuses to overwrite in Create, so remove the stale file first
+        driver.Delete(output_file)
     ds = driver.Create(output_file, xsize, ysize, 1, gdal.GDT_Float32, options=opts)
     if ds is None:
         raise RuntimeError(f"Could not create {output_file}")
@@ -470,6 +473,8 @@ def save_as_geotiff_rgb_enmap(rgb_data, output_file, reference_dataset):
         "BLOCKXSIZE=256",
         "BLOCKYSIZE=256",
     ]
+    if os.path.exists(output_file):
+        driver.Delete(output_file)
     ds = driver.Create(output_file, xsize, ysize, 3, gdal.GDT_Byte, options=opts)
     if ds is None:
         raise RuntimeError(f"Could not create {output_file}")
