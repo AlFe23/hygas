@@ -160,6 +160,21 @@ PYTHONPATH=. python scripts/SNR_prisma.py
 
 The four plotting-oriented utilities share the same 3×2 layout and rely on the existing `prisma_utils.py` / `enmap_utils.py` readers, so any improvements to the satellite helpers automatically benefit both the operational pipelines and these diagnostics.
 
+## Notebook Guide
+
+All notebooks live under `notebooks/` and are wired to the repository code via `PYTHONPATH=.`, so run them from the repo root (or adjust the first cell accordingly).
+
+- `matched_filter_demo_enmap.ipynb` – runs the full EnMAP CH₄ pipeline on the bundled test scene. **Inputs:** VNIR/SWIR GeoTIFFs, METADATA.XML, CH₄ LUT, DEM/SNR references declared in the config cell. **Outputs:** RGB composite plus matched-filter concentration (`*_MF.tif`) and propagated σ₍RMN₎ rasters written to `notebooks/outputs/pipeline_demo/enmap/` and displayed inline.
+- `matched_filter_demo_prisma.ipynb` – same workflow for PRISMA L1/L2C data (ZIP or HE5) alongside DEM/LUT/SNR assets. **Outputs:** RGB, concentration, and σ₍RMN₎ rasters under `notebooks/outputs/pipeline_demo/prisma/`.
+- `SNR_experiments_enmap.ipynb` – orchestrates the eight-case SNR CLI runs for EnMAP. **Inputs:** scene configurations (paths/ROIs/band windows/case lists/destriping flags). **Outputs:** CLI artefacts such as `striping_diagnostics.png`, `pca_summary_*.png`, `snr_cases_*.csv|png`, and logs under `notebooks/outputs/enmap/<scene_id>/` plus inline listings.
+- `SNR_experiments_prisma.ipynb` – identical orchestration for PRISMA L1/L2C scenes with the same output family stored in `notebooks/outputs/prisma/<scene_id>/`.
+- `diagnostics_uncertainty_enmap.ipynb` – documents how σ₍RMN₎ is produced for EnMAP by walking through band selection, k-means background stats, LUT target synthesis, SNR-reference mapping, and uncertainty propagation. **Inputs:** EnMAP scene folder, DEM, LUT, SNR reference. **Outputs:** console summaries plus an inline σ₍RMN₎ map.
+- `diagnostics_uncertainty_prisma.ipynb` – mirrors the above steps for PRISMA L1/L2C inputs, yielding the propagated σ₍RMN₎ raster preview.
+- `uncertainty_analysis_enmap.ipynb` – consumes finished EnMAP matched-filter concentration/uncertainty rasters (and optional plume polygons) to compute σ_tot, representative σ₍RMN₎, derived σ_Surf, and plume-level total uncertainty. **Outputs:** diagnostic figures and a JSON metrics report saved to `notebooks/outputs/uncertainty/enmap/`.
+- `uncertainty_analysis_prisma.ipynb` – same clutter-versus-instrument breakdown for PRISMA products with metrics saved in `notebooks/outputs/uncertainty/prisma/`.
+- `prisma_enmap_comparison.ipynb` – cross-sensor analysis that loads the reference PRISMA/EnMAP cubes plus precomputed SNR cases to compare SNR (case D), spectral smile, and striping metrics. **Outputs:** comparison tables/plots rendered inline and saved next to the configured output directories.
+- `test_notebook.ipynb` – minimal placeholder to verify the notebook environment; no external inputs/outputs.
+
 ## PRISMA HDF Exploration
 
 Use `scripts/inspect_prisma_hdf.py` to explore the hierarchy of a Level-1 or Level-2C PRISMA product without leaving the terminal. The tool accepts both `.he5` files and the official ZIP archives, automatically extracting the embedded HE5 to a temporary directory when needed.
