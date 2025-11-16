@@ -18,6 +18,7 @@ htmlcov/
 .ipynb_checkpoints/
 
 /test_data
+/case_studies_data
 /logs
 /product_spec_docs
 /notebooks/outputs

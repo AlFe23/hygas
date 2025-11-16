@@ -19,5 +19,6 @@ dependencies:
   - latexcodec
   - proj
   - xarray           # no channel prefix; let solver pick a compatible version
+  - geopandas
   - pip:
       - docker       # Docker SDK via pip; Conda 'docker' doesn't exist on Linux

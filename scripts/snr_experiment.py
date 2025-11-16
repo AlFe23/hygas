@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--k-pca",
         type=int,
-        default=6,
+        default=4,
         help="Number of principal components for residual estimation.",
     )
     parser.add_argument(
