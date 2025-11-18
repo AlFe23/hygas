@@ -3,6 +3,7 @@ import numpy as np
 import math
 from osgeo import gdal, ogr
 import geopandas as gpd
+from pyproj import CRS
 
 ##############################################################
 #  SENSOR CONFIGURATION
@@ -97,7 +98,13 @@ def clip_raster_to_polygon(raster_path, polygon, out_path):
     layer.CreateFeature(feat)
     ds_tmp.FlushCache()
 
-    gdal.Warp(out_path, raster_path, cutlineDSName=tmp, cropToCutline=True)
+    gdal.Warp(
+        out_path,
+        raster_path,
+        cutlineDSName=tmp,
+        cropToCutline=True,
+        dstNodata=-9999,
+    )
     arr, _, _, _ = load_geotiff(out_path)
 
     # Clean up the temporary vector datasource.
@@ -192,8 +199,10 @@ def process_plume_image(input_file,
     sensor_type = sensor_type.upper()
 
     # Load main maps
-    conc_data, _, _, _ = load_geotiff(input_file)
+    conc_data, _, projection_wkt, conc_ds = load_geotiff(input_file)
     conc_ppb = ppm_m_to_ppb(discard_neg(conc_data))
+    raster_crs = CRS.from_wkt(projection_wkt)
+    conc_ds = None
 
     if uncertainty_file:
         unc_data, _, _, _ = load_geotiff(uncertainty_file)
@@ -202,12 +211,15 @@ def process_plume_image(input_file,
         unc_ppb = None
 
     gdf = gpd.read_file(shapefile_path)
+    if gdf.crs is None:
+        raise ValueError("Shapefile must have a defined CRS.")
+    gdf_raster = gdf.to_crs(raster_crs)
     projected_gdf, _ = project_gdf_to_local_utm(gdf)
     if sigma_u10 is None:
         sigma_u10 = 1.5
 
-    for (idx, row), (_, row_projected) in zip(gdf.iterrows(), projected_gdf.iterrows()):
-        poly = row.geometry
+    for (idx, row_raster), (_, row_projected) in zip(gdf_raster.iterrows(), projected_gdf.iterrows()):
+        poly = row_raster.geometry
 
         clipped_file = os.path.join(output_dir, f"plume_{idx}.tif")
         clipped = clip_raster_to_polygon(input_file, poly, clipped_file)
