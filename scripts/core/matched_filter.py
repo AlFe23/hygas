@@ -3,9 +3,13 @@ Matched filter utilities: clustering, statistics, filter computation, and
 optional plotting. Shared between PRISMA and EnMAP processing pipelines.
 """
 
+import logging
+
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
+
+logger = logging.getLogger(__name__)
 
 
 def k_means_hyperspectral(image, k):
@@ -96,6 +100,47 @@ def calculate_statistics(image, classified_image, k):
         covariance_matrices.append(np.cov(class_pixels, rowvar=False))
     mean_radiance = np.array(mean_radiance)
     covariance_matrices = np.array(covariance_matrices)
+    return mean_radiance, covariance_matrices
+
+
+def calculate_column_statistics(image: np.ndarray):
+    """
+    Compute mean radiance and covariance matrices for each detector column.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Hyperspectral image shaped as (rows, columns, bands).
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        mean_radiance: (columns, bands)
+        covariance_matrices: (columns, bands, bands)
+    """
+
+    if image.ndim != 3:
+        raise ValueError("Column statistics require an array shaped as (rows, columns, bands).")
+
+    n_rows, n_columns, n_bands = image.shape
+    mean_radiance = np.zeros((n_columns, n_bands), dtype=float)
+    covariance_matrices = np.zeros((n_columns, n_bands, n_bands), dtype=float)
+
+    for col in range(n_columns):
+        column_pixels = image[:, col, :]
+        valid_mask = np.all(np.isfinite(column_pixels), axis=1)
+        valid_pixels = column_pixels[valid_mask]
+
+        if valid_pixels.size == 0:
+            logger.warning("Column %d has no valid pixels. Filling statistics with zeros.", col)
+            continue
+
+        mean_radiance[col] = np.mean(valid_pixels, axis=0)
+        if valid_pixels.shape[0] > 1:
+            covariance_matrices[col] = np.cov(valid_pixels, rowvar=False)
+        else:
+            covariance_matrices[col] = np.eye(n_bands)
+
     return mean_radiance, covariance_matrices
 
 
@@ -221,4 +266,3 @@ def plot_matched_filter_scores(scores, title="Matched Filter Scores"):
     plt.title(title)
     plt.show(block=False)
     plt.show()
-

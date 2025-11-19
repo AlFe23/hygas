@@ -61,10 +61,16 @@ python scripts/main.py \
   --min-wavelength 2100 \
   --max-wavelength 2450 \
   --k 1 \
+  --prisma-mf-mode srf-column \
   --log-file logs/prisma_scene.log
 ```
 
 Both `--l1` and `--l2c` accept `.he5` files or ZIP archives. ZIP inputs are unpacked automatically next to the archive, processed, and deleted once the run finishes. When `--output` is omitted the pipeline writes to `<scene_dir>_output`.
+
+`--prisma-mf-mode` mirrors the EnMAP option:
+
+- `srf-column` (default) uses k-means clusters plus column-wise SRF targets (legacy workflow).
+- `full-column` skips clustering and derives per-column mean/covariance so the matched filter fully adapts to each detector column.
 
 ### Batch Mode
 
@@ -78,6 +84,7 @@ python scripts/main.py \
   --min-wavelength 2100 \
   --max-wavelength 2450 \
   --k 1 \
+  --prisma-mf-mode full-column \
   --log-file logs/prisma_batch.log
 ```
 
@@ -98,8 +105,14 @@ python scripts/main.py \
   --k 1 \
   --min-wavelength 2150 \
   --max-wavelength 2450 \
+  --enmap-mf-mode srf-column \
   --log-file logs/enmap_scene.log
 ```
+
+`--enmap-mf-mode` selects the matched-filter flavor:
+
+- `srf-column` (default) keeps the **MF columnwise SRF with cluster tuning option**, i.e., target spectra are tiled across columns while μ/Σ come from k-means clusters.
+- `full-column` activates the true column-wise implementation with per-column mean radiance and covariance (no clustering) so both SRF and statistics adapt to each detector column.
 
 ### Batch Mode
 
@@ -111,6 +124,7 @@ python scripts/main.py \
   --k 1 \
   --min-wavelength 2150 \
   --max-wavelength 2450 \
+  --enmap-mf-mode full-column \
   --log-file logs/enmap_batch.log
 ```
 

@@ -25,10 +25,11 @@ def ch4_detection(
     dem_file,
     lut_file,
     output_dir,
-    min_wavelength,
-    max_wavelength,
-    k,
-    save_rads=False,
+    min_wavelength=2100.0,
+    max_wavelength=2450.0,
+    k=1,
+    mf_mode: str = "srf-column",
+    save_rads: bool = False,
     snr_reference_path: str | None = None,
 ):
 
@@ -165,13 +166,30 @@ def ch4_detection(
         mean_cw_subselection = mean_cw[band_indices]
         mean_fwhm_subselection = mean_fwhm[band_indices]
 
-        # k-means classification using the same bands as the matched filter or all available bands
-        classified_image = matched_filter.k_means_hyperspectral(rads_array_subselection, k)
-        logger.info("k-means classification completed with k=%d", k)
+        if mf_mode == "srf-column":
+            # k-means classification using the same bands as the matched filter or all available bands
+            classified_image = matched_filter.k_means_hyperspectral(rads_array_subselection, k)
+            logger.info("k-means classification completed with k=%d (PRISMA srf-column mode).", k)
 
-        mean_radiance, covariance_matrices = matched_filter.calculate_statistics(
-            rads_array_subselection, classified_image, k
-        )
+            mean_radiance, covariance_matrices = matched_filter.calculate_statistics(
+                rads_array_subselection, classified_image, k
+            )
+            k_eff = k
+        elif mf_mode == "full-column":
+            n_rows, n_columns = rads_array_subselection.shape[:2]
+            classified_image = np.tile(np.arange(n_columns, dtype=np.int32), (n_rows, 1))
+            logger.info(
+                "PRISMA full column-wise MF selected: per-column mean radiance/covariance without clustering (ignoring k=%d).",
+                k,
+            )
+            mean_radiance, covariance_matrices = matched_filter.calculate_column_statistics(rads_array_subselection)
+            if mean_radiance.shape[0] != n_columns:
+                raise RuntimeError(
+                    f"Column statistics mismatch: expected {n_columns} columns, got {mean_radiance.shape[0]}."
+                )
+            k_eff = mean_radiance.shape[0]
+        else:
+            raise ValueError(f"Unsupported PRISMA matched filter mode: {mf_mode}")
 
         # Target spectrum calculation and matched filter application
         concentrations = [0.0, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
@@ -201,7 +219,7 @@ def ch4_detection(
             mean_radiance,
             covariance_matrices,
             target_spectra,
-            k,
+            k_eff,
         )
 
         snr_reference_path = snr_reference_path or os.environ.get("PRISMA_SNR_REFERENCE")
@@ -260,6 +278,7 @@ def ch4_detection(
             SZA=SZA,
             mean_elevation=mean_elevation,
             k=k,
+            mf_mode=mf_mode,
             mf_output_file=mf_output_file,
             concentration_output_file=concentration_output_file,
             rgb_output_file=rgb_output_file,
@@ -270,7 +289,17 @@ def ch4_detection(
         )
 
 
-def process_directory(root_dir, dem_file, lut_file, min_wavelength, max_wavelength, k, output_root_dir=None, save_rads=False):
+def process_directory(
+    root_dir,
+    dem_file,
+    lut_file,
+    min_wavelength,
+    max_wavelength,
+    k,
+    mf_mode: str = "srf-column",
+    output_root_dir=None,
+    save_rads=False,
+):
     """
     Batch processing wrapper that mirrors the behavior of the original script
     while delegating scene-level work to `ch4_detection`.
@@ -322,13 +351,14 @@ def process_directory(root_dir, dem_file, lut_file, min_wavelength, max_waveleng
                         L1_file,
                         L2C_file,
                         dem_file,
-                        lut_file,
-                        output_dir,
-                        min_wavelength,
-                        max_wavelength,
-                        k,
-                        save_rads=save_rads,
-                    )
+                    lut_file,
+                    output_dir,
+                    min_wavelength,
+                    max_wavelength,
+                    k,
+                    mf_mode=mf_mode,
+                    save_rads=save_rads,
+                )
                     status = "Success"
                     details = "Processed successfully (direct HE5 files)"
                 except Exception as e:
@@ -364,13 +394,14 @@ def process_directory(root_dir, dem_file, lut_file, min_wavelength, max_waveleng
                             L1_file,
                             L2C_file,
                             dem_file,
-                            lut_file,
-                            output_dir,
-                            min_wavelength,
-                            max_wavelength,
-                            k,
-                            save_rads=save_rads,
-                        )
+                        lut_file,
+                        output_dir,
+                        min_wavelength,
+                        max_wavelength,
+                        k,
+                        mf_mode=mf_mode,
+                        save_rads=save_rads,
+                    )
                         status = "Success"
                         details = "Processed successfully from extracted zip files"
                     except Exception as e:

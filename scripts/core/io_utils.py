@@ -16,6 +16,7 @@ def generate_prisma_report(
     SZA,
     mean_elevation,
     k,
+    mf_mode,
     mf_output_file,
     concentration_output_file,
     uncertainty_output_file,
@@ -37,6 +38,7 @@ def generate_prisma_report(
     SZA (float): Angolo zenitale del sole.
     mean_elevation (float): Elevazione media dell'area di interesse.
     k (int): Numero di cluster utilizzato nel k-means.
+    mf_mode (str): Modalità del matched filter (srf-column o full-column).
     mf_output_file (str): Path al file output del matched filter.
     concentration_output_file (str): Path al file output della mappa di concentrazione.
     rgb_output_file (str): Path al file RGB di output.
@@ -49,6 +51,11 @@ def generate_prisma_report(
     report_path = os.path.join(output_dir, "processing_report.txt")
 
     # Contenuto del report
+    if mf_mode == "srf-column":
+        k_entry = str(k)
+    else:
+        k_entry = "n/a (full-column)"
+
     report_content = f"""
     Processing Report
     -----------------
@@ -71,7 +78,8 @@ def generate_prisma_report(
     - Mean Water Vapor: {meanWV} g/cm^2
     - Solar Zenith Angle: {SZA} degrees
     - Mean Elevation: {mean_elevation} km
-    - Number of Clusters (k-means): {k}
+    - Matched Filter Mode: {mf_mode}
+    - Number of Clusters (k-means): {k_entry}
     - Spectral Window: {min_wavelength} - {max_wavelength} nm
     """
 
@@ -99,11 +107,16 @@ def generate_enmap_report(
     rgb_output_file,
     classified_output_file,
     target_spectra_file,
+    mf_mode,
 ):
     """Create an EnMAP-specific processing report mirroring the PRISMA flow."""
 
     processing_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     report_path = os.path.join(output_dir, "processing_report.txt")
+    if mf_mode == "srf-column":
+        k_entry = str(k)
+    else:
+        k_entry = "n/a (full-column)"
 
     report_content = f"""
     Processing Report (EnMAP)
@@ -127,7 +140,8 @@ def generate_enmap_report(
     - Mean Water Vapor: {mean_wv} g/cm^2
     - Solar Zenith Angle: {SZA} degrees
     - Mean Elevation: {mean_elevation_km} km
-    - Number of Clusters (k-means): {k}
+    - Matched Filter Mode: {mf_mode}
+    - Number of Clusters (k-means): {k_entry}
     - Spectral Window: {min_wavelength} - {max_wavelength} nm
     """
 

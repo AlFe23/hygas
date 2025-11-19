@@ -655,7 +655,7 @@ def propagate_rmn_uncertainty(
     # It is equivalent to: denom = t.T @ np.linalg.inv(C_N) @ t
     # where C_N is diagonal with sigma_cube**2 on the diagonal.
 
-    if target_spectra.ndim == 1:  # EnMAP case
+    if target_spectra.ndim == 1:
         t_lookup = mean_radiance * target_spectra[None, :]
         for cls in range(k):
             class_mask = (classified_image == cls)
@@ -667,7 +667,11 @@ def propagate_rmn_uncertainty(
             denom = np.sum(t_vec[:, np.newaxis]**2 / (sigma_cube[:, class_mask]**2), axis=0)
             result[class_mask] = 1.0 / np.sqrt(np.clip(denom, 1e-12, None))
 
-    else:  # PRISMA case
+    elif target_spectra.ndim == 2:
+        if target_spectra.shape[1] != cols:
+            raise ValueError(
+                f"Column-wise target spectra expect {cols} columns but received {target_spectra.shape[1]}."
+            )
         for c in range(cols):
             for cls in range(k):
                 class_mask = (classified_image[:, c] == cls)
@@ -676,9 +680,11 @@ def propagate_rmn_uncertainty(
 
                 t_vec = mean_radiance[cls] * target_spectra[:, c]
                 sigma_pix = sigma_cube[:, class_mask, c]
-                
+
                 # The denominator of the uncertainty equation
-                denom = np.sum(t_vec[:, np.newaxis]**2 / (sigma_pix**2), axis=0)
+                denom = np.sum(t_vec[:, np.newaxis] ** 2 / (sigma_pix**2), axis=0)
                 result[class_mask, c] = 1.0 / np.sqrt(np.clip(denom, 1e-12, None))
+    else:
+        raise ValueError("target_spectra must be a 1-D vector or a (bands, columns) matrix.")
 
     return result
