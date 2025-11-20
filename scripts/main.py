@@ -57,11 +57,12 @@ def build_parser():
     parser.add_argument("--max-wavelength", type=float, default=2450, help="Maximum wavelength (nm).")
     parser.add_argument(
         "--prisma-mf-mode",
-        choices=["srf-column", "full-column"],
+        choices=["srf-column", "full-column", "advanced"],
         default="srf-column",
         help=(
             "PRISMA matched-filter variant: 'srf-column' (default) uses clustering with column-wise SRF "
-            "targets, while 'full-column' estimates per-column mean/covariance without clustering."
+            "targets, 'full-column' estimates per-column mean/covariance without clustering, and "
+            "'advanced' enables the grouped PCA + shrinkage workflow."
         ),
     )
 
@@ -71,12 +72,12 @@ def build_parser():
     parser.add_argument("--metadata", help="ENMAP METADATA.XML path.")
     parser.add_argument(
         "--enmap-mf-mode",
-        choices=["srf-column", "full-column"],
+        choices=["srf-column", "full-column", "advanced"],
         default="srf-column",
         help=(
             "EnMAP matched-filter variant: 'srf-column' (default) keeps the cluster-tuned "
-            "columnwise SRF workflow, while 'full-column' estimates per-column mean/covariance "
-            "without clustering."
+            "columnwise SRF workflow, 'full-column' estimates per-column mean/covariance "
+            "without clustering, and 'advanced' activates the grouped PCA + shrinkage workflow."
         ),
     )
 
@@ -164,17 +165,17 @@ def main(argv=None):
             if missing:
                 parser.error(f"Missing required PRISMA batch arguments: {', '.join(missing)}")
             output_root = args.output_root
-                prisma_pipeline.process_directory(
-                    root_dir=args.root_directory,
-                    dem_file=args.dem,
-                    lut_file=args.lut,
-                    min_wavelength=args.min_wavelength,
-                    max_wavelength=args.max_wavelength,
-                    k=args.k,
-                    mf_mode=args.prisma_mf_mode,
-                    output_root_dir=output_root,
-                    save_rads=args.save_rads,
-                )
+            prisma_pipeline.process_directory(
+                root_dir=args.root_directory,
+                dem_file=args.dem,
+                lut_file=args.lut,
+                min_wavelength=args.min_wavelength,
+                max_wavelength=args.max_wavelength,
+                k=args.k,
+                mf_mode=args.prisma_mf_mode,
+                output_root_dir=output_root,
+                save_rads=args.save_rads,
+            )
     else:
         if args.mode == "scene":
             required = ["vnir", "swir", "metadata"]

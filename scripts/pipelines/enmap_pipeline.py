@@ -11,6 +11,7 @@ from datetime import datetime
 import numpy as np
 from osgeo import gdal
 
+import advanced_matched_filter
 from scripts.core import matched_filter, targets, lut, io_utils, noise  # type: ignore
 from scripts.satellites import enmap_utils  # type: ignore
 
@@ -28,6 +29,7 @@ def ch4_detection_enmap(
     max_wavelength=2450.0,
     snr_reference_path: str | None = None,
     mf_mode: str = "srf-column",
+    advanced_mf_options: dict | None = None,
 ):
     # Ensure output directory exists
     if not os.path.exists(output_dir):
@@ -139,29 +141,6 @@ def ch4_detection_enmap(
     cw_subselection = cw_array[band_indices]
     fwhm_subselection = fwhm_array[band_indices]
 
-    if mf_mode == "srf-column":
-        classified_image = matched_filter.k_means_hyperspectral(rads_array_subselection, k)
-        logger.info("k-means classification completed with k=%d (MF columnwise SRF mode).", k)
-        mean_radiance, covariance_matrices = matched_filter.calculate_statistics(
-            rads_array_subselection, classified_image, k
-        )
-    elif mf_mode == "full-column":
-        n_rows, n_columns = rads_array_subselection.shape[:2]
-        classified_image = np.tile(np.arange(n_columns, dtype=np.int32), (n_rows, 1))
-        logger.info(
-            "Full column-wise MF selected: per-column mean radiance and covariance without clustering (ignoring k=%d).",
-            k,
-        )
-        mean_radiance, covariance_matrices = matched_filter.calculate_column_statistics(rads_array_subselection)
-        if mean_radiance.shape[0] != n_columns:
-            raise RuntimeError(
-                f"Column statistics mismatch: expected {n_columns} columns, got {mean_radiance.shape[0]}."
-            )
-    else:
-        raise ValueError(f"Unsupported EnMAP matched filter mode: {mf_mode}")
-
-    k_eff = mean_radiance.shape[0]
-
     concentrations = [0.0, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
     ground_km = lut.normalize_ground_km(mean_elevation_km)
     water_gcm2 = lut.normalize_wv_gcm2(meanWV)
@@ -177,19 +156,68 @@ def ch4_detection_enmap(
     num_columns = rads_array_subselection.shape[1]
     # TODO(#columnwise-srf): replace the nominal SRF tiling with true per-column CW/FWHM once detector-level metadata is available.
     target_spectra = np.repeat(base_target[:, None], num_columns, axis=1)
-    if mf_mode == "srf-column":
-        logger.info(
-            "Running MF columnwise SRF with cluster tuning option (nominal SRF tiled across %d columns).",
-            num_columns,
-        )
-    else:
-        logger.info("Running full column-wise matched filter (SRF + per-column statistics) on %d columns.", num_columns)
-
-    concentration_map = matched_filter.calculate_matched_filter_columnwise(
-        rads_array_subselection, classified_image, mean_radiance, covariance_matrices, target_spectra, k_eff
-    )
-
     np.save(target_spectra_export_name, target_spectra)
+
+    if mf_mode == "srf-column":
+        classified_image = matched_filter.k_means_hyperspectral(rads_array_subselection, k)
+        logger.info("k-means classification completed with k=%d (MF columnwise SRF mode).", k)
+        mean_radiance, covariance_matrices = matched_filter.calculate_statistics(
+            rads_array_subselection, classified_image, k
+        )
+        concentration_map = matched_filter.calculate_matched_filter_columnwise(
+            rads_array_subselection, classified_image, mean_radiance, covariance_matrices, target_spectra, k
+        )
+        classified_image_for_noise = classified_image
+    elif mf_mode == "full-column":
+        n_rows, n_columns = rads_array_subselection.shape[:2]
+        classified_image = np.tile(np.arange(n_columns, dtype=np.int32), (n_rows, 1))
+        logger.info(
+            "Full column-wise MF selected: per-column mean radiance and covariance without clustering (ignoring k=%d).",
+            k,
+        )
+        mean_radiance, covariance_matrices = matched_filter.calculate_column_statistics(rads_array_subselection)
+        if mean_radiance.shape[0] != n_columns:
+            raise RuntimeError(
+                f"Column statistics mismatch: expected {n_columns} columns, got {mean_radiance.shape[0]}."
+            )
+        concentration_map = matched_filter.calculate_matched_filter_columnwise(
+            rads_array_subselection,
+            classified_image,
+            mean_radiance,
+            covariance_matrices,
+            target_spectra,
+            mean_radiance.shape[0],
+        )
+        classified_image_for_noise = classified_image
+    elif mf_mode == "advanced":
+        logger.info(
+            "Running advanced matched filter (clusters=%d) with options: %s",
+            max(1, k),
+            advanced_mf_options or {},
+        )
+        advanced_kwargs = dict(
+            group_min=10,
+            group_max=30,
+            n_clusters=max(1, k),
+            shrinkage=0.1,
+        )
+        if advanced_mf_options:
+            advanced_kwargs.update(advanced_mf_options)
+        concentration_map = advanced_matched_filter.run_advanced_mf(
+            radiance_cube=rads_array_subselection,
+            targets=target_spectra,
+            wavelengths=cw_subselection,
+            mask=None,
+            **advanced_kwargs,
+        )
+        classified_image = advanced_matched_filter.get_last_cluster_labels()
+        stats = advanced_matched_filter.get_last_cluster_statistics()
+        if classified_image is None or stats is None:
+            raise RuntimeError("Advanced matched filter did not expose cluster statistics for downstream usage.")
+        mean_radiance, covariance_matrices = stats
+        classified_image_for_noise = np.where(classified_image < 0, 0, classified_image)
+    else:
+        raise ValueError(f"Unsupported EnMAP matched filter mode: {mf_mode}")
 
     snr_reference_path = snr_reference_path or os.environ.get("ENMAP_SNR_REFERENCE")
     if not snr_reference_path:
@@ -206,10 +234,12 @@ def ch4_detection_enmap(
     sigma_cube = noise.compute_sigma_map_from_reference(reference_subset, rad_cube_brc)
     sigma_rmn = noise.propagate_rmn_uncertainty(
         sigma_cube=sigma_cube,
-        classified_image=classified_image,
+        classified_image=classified_image_for_noise,
         mean_radiance=mean_radiance,
         target_spectra=target_spectra,
     ).astype(np.float32)
+    if mf_mode == "advanced":
+        sigma_rmn[classified_image < 0] = np.nan
 
     logger.info(
         "σ_RMN (instrument noise) — min: %.4f, median: %.4f, max: %.4f",
