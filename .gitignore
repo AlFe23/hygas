@@ -23,3 +23,7 @@ htmlcov/
 /product_spec_docs
 /notebooks/outputs
 diff.txt
+
+
+*.tiff
+*.zip

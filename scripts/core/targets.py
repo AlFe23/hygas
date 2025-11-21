@@ -23,8 +23,16 @@ def generate_template_from_bands(centers, fwhm, simRads, simWave, concentrations
     :return template: the unit absorption spectum
     """
     # import scipy.stats
-    # SCALING = 1e5
+    #SCALING = 1e5
     SCALING = 1
+    # The SCALING factor adjusts the magnitude of the output target spectrum.
+    # A factor of 1 is used here, meaning the target represents the change in
+    # log-radiance per unit of concentration directly.
+    # Using a large scaling factor (e.g., 1e5, as seen in some other implementations)
+    # can lead to numerical precision issues (results tending to zero) in the
+    # matched filter calculation if the denominator becomes too large.
+    # The matched filter implementation used in this project expects an unscaled target.
+    
     if np.any(~np.isfinite(centers)) or np.any(~np.isfinite(fwhm)):
         raise RuntimeError("Band Wavelengths Centers/FWHM data contains non-finite data (NaN or Inf).")
     if centers.shape[0] != fwhm.shape[0]:
