@@ -190,6 +190,7 @@ def ch4_detection(
         )
         np.save(target_spectra_export_name, target_spectra)
 
+        rad_cube_for_noise = rads_array_subselection
         if mf_mode == "srf-column":
             classified_image = matched_filter.k_means_hyperspectral(rads_array_subselection, k)
             logger.info("k-means classification completed with k=%d (PRISMA srf-column mode).", k)
@@ -207,25 +208,33 @@ def ch4_detection(
             )
             classified_image_for_noise = classified_image
         elif mf_mode == "full-column":
-            n_rows, n_columns = rads_array_subselection.shape[:2]
-            classified_image = np.tile(np.arange(n_columns, dtype=np.int32), (n_rows, 1))
             logger.info(
-                "PRISMA full column-wise MF selected: per-column mean radiance/covariance without clustering (ignoring k=%d).",
+                "PRISMA full column-wise MF selected: pivoting the cube so detector columns line up with SRF axis "
+                "(ignoring k=%d).",
                 k,
             )
-            mean_radiance, covariance_matrices = matched_filter.calculate_column_statistics(rads_array_subselection)
-            if mean_radiance.shape[0] != n_columns:
+            # PRISMA preprocessing rotates the cube so detector columns become axis 0, while the CW/FWHM matrices
+            # (and SNR reference) keep the original column ordering on axis 1. Swap axes here so the matched filter
+            # reuses the well-tested column-wise logic from the srf-column implementation.
+            mf_cube = np.swapaxes(rads_array_subselection, 0, 1)
+            mf_rows, mf_columns = mf_cube.shape[:2]
+            classified_image_mf = np.tile(np.arange(mf_columns, dtype=np.int32), (mf_rows, 1))
+
+            mean_radiance, covariance_matrices = matched_filter.calculate_column_statistics(mf_cube)
+            if mean_radiance.shape[0] != mf_columns:
                 raise RuntimeError(
-                    f"Column statistics mismatch: expected {n_columns} columns, got {mean_radiance.shape[0]}."
+                    f"Column statistics mismatch: expected {mf_columns} columns, got {mean_radiance.shape[0]}."
                 )
-            concentration_map = matched_filter.calculate_matched_filter_columnwise(
-                rads_array_subselection,
-                classified_image,
+            concentration_map_mf = matched_filter.calculate_matched_filter_columnwise(
+                mf_cube,
+                classified_image_mf,
                 mean_radiance,
                 covariance_matrices,
                 target_spectra,
                 mean_radiance.shape[0],
             )
+            concentration_map = np.swapaxes(concentration_map_mf, 0, 1)
+            classified_image = np.swapaxes(classified_image_mf, 0, 1)
             classified_image_for_noise = classified_image
         elif mf_mode == "advanced":
             logger.info(
@@ -266,9 +275,9 @@ def ch4_detection(
         logger.info("Loading PRISMA SNR reference from %s", snr_reference_path)
         reference = noise.ColumnwiseSNRReference.load(snr_reference_path)
         reference_subset = reference.subset_by_wavelengths(mean_cw_subselection).ensure_column_count(
-            rads_array_subselection.shape[1]
+            rad_cube_for_noise.shape[1]
         )
-        rad_cube_brc = np.transpose(rads_array_subselection, (2, 0, 1))
+        rad_cube_brc = np.transpose(rad_cube_for_noise, (2, 0, 1))
         sigma_cube = noise.compute_sigma_map_from_reference(reference_subset, rad_cube_brc)
         sigma_rmn = noise.propagate_rmn_uncertainty(
             sigma_cube=sigma_cube,
