@@ -24,6 +24,7 @@ def generate_prisma_report(
     classified_output_file,
     min_wavelength,
     max_wavelength,
+    sensitivity_output_file=None,
 ):
     """
     Genera un report di elaborazione nella cartella di output, contenente i dettagli dei file di input e output, e i principali parametri calcolati.
@@ -73,7 +74,11 @@ def generate_prisma_report(
     - Instrument Noise Uncertainty Map: {uncertainty_output_file}
     - RGB Image Output: {rgb_output_file}
     - Classified Image Output: {classified_output_file}
+"""
+    if sensitivity_output_file:
+        report_content += f"    - Sensitivity Map Output: {sensitivity_output_file}\n"
 
+    report_content += f"""
     Processing Parameters:
     - Mean Water Vapor: {meanWV} g/cm^2
     - Solar Zenith Angle: {SZA} degrees
@@ -108,6 +113,7 @@ def generate_enmap_report(
     classified_output_file,
     target_spectra_file,
     mf_mode,
+    sensitivity_output_file=None,
 ):
     """Create an EnMAP-specific processing report mirroring the PRISMA flow."""
 
@@ -135,7 +141,11 @@ def generate_enmap_report(
     - RGB Image Output: {rgb_output_file}
     - Classified Image Output: {classified_output_file}
     - Target Spectrum (NPY): {target_spectra_file}
+"""
+    if sensitivity_output_file:
+        report_content += f"    - Sensitivity Map Output: {sensitivity_output_file}\n"
 
+    report_content += f"""
     Processing Parameters:
     - Mean Water Vapor: {mean_wv} g/cm^2
     - Solar Zenith Angle: {SZA} degrees

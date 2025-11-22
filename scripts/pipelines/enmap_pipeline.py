@@ -12,7 +12,7 @@ import numpy as np
 from osgeo import gdal
 
 import advanced_matched_filter
-from scripts.core import matched_filter, targets, lut, io_utils, noise  # type: ignore
+from scripts.core import matched_filter, targets, lut, io_utils, noise, jpl_matched_filter  # type: ignore
 from scripts.satellites import enmap_utils  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -116,6 +116,7 @@ def ch4_detection_enmap(
     target_spectra_export_name = os.path.join(output_dir, f"{output_basename}_CH4_target.npy")
     concentration_output_file = os.path.join(output_dir, f"{output_basename}_MF.tif")
     uncertainty_output_file = os.path.join(output_dir, f"{output_basename}_MF_uncertainty.tif")
+    sensitivity_output_file = os.path.join(output_dir, f"{output_basename}_MF_sensitivity.tif")
     rgb_output_file = os.path.join(output_dir, f"{output_basename}_RGB.tif")
     classified_output_file = os.path.join(output_dir, f"{output_basename}_CL.tif")
 
@@ -216,6 +217,33 @@ def ch4_detection_enmap(
             raise RuntimeError("Advanced matched filter did not expose cluster statistics for downstream usage.")
         mean_radiance, covariance_matrices = stats
         classified_image_for_noise = np.where(classified_image < 0, 0, classified_image)
+    elif mf_mode == "jpl":
+        logger.info("Running JPL matched filter.")
+        good_pixel_mask = np.all(np.isfinite(rads_array_subselection), axis=2)
+        
+        # The JPL filter doesn't use k-means, so we create a dummy classified image for reporting
+        classified_image = np.zeros(rads_array_subselection.shape[:2], dtype=np.int32)
+        classified_image_for_noise = classified_image
+        
+        # The JPL filter calculates its own mean and covariance internally.
+        # We still need to compute sigma_cube for the uncertainty calculation.
+        rad_cube_brc_jpl = np.transpose(rads_array_subselection, (2, 0, 1))
+        reference_jpl = noise.ColumnwiseSNRReference.load(snr_reference_path or os.environ.get("ENMAP_SNR_REFERENCE"))
+        reference_subset_jpl = reference_jpl.subset_by_wavelengths(cw_subselection).ensure_column_count(
+            rads_array_subselection.shape[1]
+        )
+        sigma_cube_jpl = noise.compute_sigma_map_from_reference(reference_subset_jpl, rad_cube_brc_jpl)
+        noise_cube_for_jpl = np.transpose(sigma_cube_jpl, (1, 2, 0))
+
+        concentration_map, sigma_rmn, sensitivity_map = jpl_matched_filter.run_jpl_mf(
+            rads_array=rads_array_subselection,
+            target_spectra=base_target,  # JPL filter uses a single target spectrum
+            good_pixel_mask=good_pixel_mask,
+            noise_cube=noise_cube_for_jpl,
+        )
+        # Save sensitivity map
+        enmap_utils.save_as_geotiff_single_band_enmap(sensitivity_map, sensitivity_output_file, gdal.Open(swir_file))
+        mean_radiance, covariance_matrices = None, None # Not produced by this path
     else:
         raise ValueError(f"Unsupported EnMAP matched filter mode: {mf_mode}")
 
@@ -225,21 +253,23 @@ def ch4_detection_enmap(
             "EnMAP SNR reference not provided. "
             "Set the path via snr_reference_path parameter or ENMAP_SNR_REFERENCE environment variable."
         )
-    logger.info("Loading EnMAP SNR reference from %s", snr_reference_path)
-    reference = noise.ColumnwiseSNRReference.load(snr_reference_path)
-    reference_subset = reference.subset_by_wavelengths(cw_subselection).ensure_column_count(
-        rads_array_subselection.shape[1]
-    )
-    rad_cube_brc = np.transpose(rads_array_subselection, (2, 0, 1))
-    sigma_cube = noise.compute_sigma_map_from_reference(reference_subset, rad_cube_brc)
-    sigma_rmn = noise.propagate_rmn_uncertainty(
-        sigma_cube=sigma_cube,
-        classified_image=classified_image_for_noise,
-        mean_radiance=mean_radiance,
-        target_spectra=target_spectra,
-    ).astype(np.float32)
-    if mf_mode == "advanced":
-        sigma_rmn[classified_image < 0] = np.nan
+    
+    if mf_mode != "jpl":
+        logger.info("Loading EnMAP SNR reference from %s", snr_reference_path)
+        reference = noise.ColumnwiseSNRReference.load(snr_reference_path)
+        reference_subset = reference.subset_by_wavelengths(cw_subselection).ensure_column_count(
+            rads_array_subselection.shape[1]
+        )
+        rad_cube_brc = np.transpose(rads_array_subselection, (2, 0, 1))
+        sigma_cube = noise.compute_sigma_map_from_reference(reference_subset, rad_cube_brc)
+        sigma_rmn = noise.propagate_rmn_uncertainty(
+            sigma_cube=sigma_cube,
+            classified_image=classified_image_for_noise,
+            mean_radiance=mean_radiance,
+            target_spectra=target_spectra,
+        ).astype(np.float32)
+        if mf_mode == "advanced":
+            sigma_rmn[classified_image < 0] = np.nan
 
     logger.info(
         "σ_RMN (instrument noise) — min: %.4f, median: %.4f, max: %.4f",
@@ -277,6 +307,7 @@ def ch4_detection_enmap(
         target_spectra_file=target_spectra_export_name,
         uncertainty_output_file=uncertainty_output_file,
         mf_mode=mf_mode,
+        sensitivity_output_file=sensitivity_output_file if mf_mode == "jpl" else None,
     )
 
 

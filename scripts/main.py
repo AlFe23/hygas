@@ -56,8 +56,7 @@ def build_parser():
     parser.add_argument("--min-wavelength", type=float, default=2100, help="Minimum wavelength (nm).")
     parser.add_argument("--max-wavelength", type=float, default=2450, help="Maximum wavelength (nm).")
     parser.add_argument(
-        "--prisma-mf-mode",
-        choices=["srf-column", "full-column", "advanced"],
+        choices=["srf-column", "full-column", "advanced", "jpl"],
         default="srf-column",
         help=(
             "PRISMA matched-filter variant: 'srf-column' (default) uses clustering with column-wise SRF "
@@ -72,7 +71,7 @@ def build_parser():
     parser.add_argument("--metadata", help="ENMAP METADATA.XML path.")
     parser.add_argument(
         "--enmap-mf-mode",
-        choices=["srf-column", "full-column", "advanced"],
+        choices=["srf-column", "full-column", "advanced", "jpl"],
         default="srf-column",
         help=(
             "EnMAP matched-filter variant: 'srf-column' (default) keeps the cluster-tuned "
