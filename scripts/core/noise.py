@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Optional, Sequence
 
 import numpy as np
+import warnings
 
 try:  # optional dependency for edge magnitude
     from skimage.filters import sobel
@@ -435,7 +436,8 @@ class ColumnwiseSNRReference:
         self,
         wavelengths: Sequence[float],
         *,
-        atol: float = 1,
+        warn_atol: float = 3.0,
+        max_atol: float = 25.0,
     ) -> "ColumnwiseSNRReference":
         """
         Return a reference restricted to the provided wavelength grid.
@@ -446,10 +448,10 @@ class ColumnwiseSNRReference:
             Target wavelengths (nm). Each will be matched against the stored
             reference wavelengths; the nearest band within ``atol`` nanometers
             is selected.
-        atol : float
-            Maximum allowed absolute difference (nm) between the requested
-            wavelength and the reference band centre. Increase if the sensor
-            wavelengths differ slightly between scenes.
+        warn_atol : float
+            Warn when |scene wavelength − reference| exceeds this threshold (nm).
+        max_atol : float
+            Maximum allowed absolute difference (nm). Raise if any band exceeds this.
         """
 
         target = np.asarray(wavelengths, dtype=float)
@@ -458,14 +460,29 @@ class ColumnwiseSNRReference:
 
         ref_wl = self.band_nm
         indices = np.empty(target.size, dtype=int)
+        warn_records = []
         for i, wl in enumerate(target):
             band_idx = int(np.argmin(np.abs(ref_wl - wl)))
             delta = abs(ref_wl[band_idx] - wl)
-            if delta > atol:
+            if delta > max_atol:
                 raise ValueError(
-                    f"No reference band within {atol} nm for wavelength {wl:.3f} nm (closest offset {delta:.3f} nm)."
+                    f"No reference band within {max_atol} nm for wavelength {wl:.3f} nm (closest offset {delta:.3f} nm)."
                 )
+            if delta > warn_atol:
+                warn_records.append((i, wl, ref_wl[band_idx], delta))
             indices[i] = band_idx
+
+        if warn_records:
+            max_delta = max(r[-1] for r in warn_records)
+            details = ", ".join(
+                f"scene[{i}]={wl:.3f}→ref={rw:.3f} (Δ={d:.3f} nm)"
+                for i, wl, rw, d in warn_records
+            )
+            warnings.warn(
+                f"SNR reference wavelength mismatch > {warn_atol} nm for "
+                f"{len(warn_records)} bands (max Δ={max_delta:.3f} nm); "
+                f"continuing because Δ <= {max_atol} nm. Details: {details}"
+            )
 
         return ColumnwiseSNRReference(
             band_nm=ref_wl[indices],

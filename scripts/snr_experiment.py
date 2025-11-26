@@ -1,5 +1,5 @@
 """
-Run the eight-case SNR experiment (A–H) for PRISMA or EnMAP scenes.
+Run the eight-case SNR experiment (A–H) for PRISMA, EnMAP, or EMIT scenes.
 
 Usage:
     python -m hygas.scripts.snr_experiment --sensor prisma --input <L1.he5> [--input <L2C.he5>] ...
@@ -18,7 +18,7 @@ import numpy as np
 
 from .core import noise, targets
 from .diagnostics import plots, pca_tools, striping
-from .satellites import enmap_utils, prisma_utils
+from .satellites import emit_utils, enmap_utils, prisma_utils
 
 
 PRISMA_REFERENCE_BANDS = {"vnir_index": 43, "swir_index": 202}  # 1-based indices
@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="A–H SNR experiment without tiling.")
     parser.add_argument(
         "--sensor",
-        choices=["prisma", "enmap"],
+        choices=["prisma", "enmap", "emit"],
         required=True,
         help="Target sensor.",
     )
@@ -41,7 +41,10 @@ def parse_args() -> argparse.Namespace:
         "--input",
         required=True,
         nargs="+",
-        help="Input paths. PRISMA: L1 (and optionally L2C). EnMAP: directory or VNIR/SWIR/METADATA files.",
+        help=(
+            "Input paths. PRISMA: L1 (and optionally L2C). EnMAP: directory or VNIR/SWIR/METADATA files. "
+            "EMIT: radiance NetCDF (required) plus observation NetCDF (optional)."
+        ),
     )
     parser.add_argument(
         "--roi",
@@ -393,6 +396,11 @@ def load_enmap_scene(inputs: Sequence[str]) -> SceneData:
     )
 
 
+def load_emit_scene(inputs: Sequence[str]) -> SceneData:
+    payload = emit_utils.load_emit_scene(inputs)
+    return SceneData(**payload)
+
+
 def select_bands(cube: np.ndarray, wl: np.ndarray, band_range: Tuple[float, float]) -> Tuple[np.ndarray, np.ndarray]:
     idx = targets.select_band_indices(wl, band_range[0], band_range[1])
     if idx.size == 0:
@@ -533,8 +541,10 @@ def main():
 
     if args.sensor == "prisma":
         scene = load_prisma_scene(args.input)
-    else:
+    elif args.sensor == "enmap":
         scene = load_enmap_scene(args.input)
+    else:
+        scene = load_emit_scene(args.input)
 
     cube = scene.cube
     wl = scene.wavelengths

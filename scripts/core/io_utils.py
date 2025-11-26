@@ -52,10 +52,12 @@ def generate_prisma_report(
     report_path = os.path.join(output_dir, "processing_report.txt")
 
     # Contenuto del report
-    if mf_mode == "srf-column":
+    if mf_mode in ("srf-column", "advanced"):
         k_entry = str(k)
-    else:
+    elif mf_mode == "full-column":
         k_entry = "n/a (full-column)"
+    else:
+        k_entry = "n/a"
 
     report_content = f"""
     Processing Report
@@ -119,10 +121,12 @@ def generate_enmap_report(
 
     processing_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     report_path = os.path.join(output_dir, "processing_report.txt")
-    if mf_mode == "srf-column":
+    if mf_mode in ("srf-column", "advanced"):
         k_entry = str(k)
-    else:
+    elif mf_mode == "full-column":
         k_entry = "n/a (full-column)"
+    else:
+        k_entry = "n/a"
 
     report_content = f"""
     Processing Report (EnMAP)

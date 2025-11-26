@@ -30,6 +30,7 @@ def ch4_detection_enmap(
     snr_reference_path: str | None = None,
     mf_mode: str = "srf-column",
     advanced_mf_options: dict | None = None,
+    output_name_suffix: str | None = None,
 ):
     # Ensure output directory exists
     if not os.path.exists(output_dir):
@@ -112,6 +113,8 @@ def ch4_detection_enmap(
         )
 
     output_basename = enmap_utils.derive_basename_from_metadata(metadata_file)
+    if output_name_suffix:
+        output_basename = f"{output_basename}_{output_name_suffix}"
 
     target_spectra_export_name = os.path.join(output_dir, f"{output_basename}_CH4_target.npy")
     concentration_output_file = os.path.join(output_dir, f"{output_basename}_MF.tif")

@@ -33,6 +33,7 @@ def ch4_detection(
     save_rads: bool = False,
     snr_reference_path: str | None = None,
     advanced_mf_options: dict | None = None,
+    output_name_suffix: str | None = None,
 ):
 
     # Ensure output directory exists
@@ -116,6 +117,8 @@ def ch4_detection(
         # Extract the file name without the extension for output files
         _, full_filename = os.path.split(L1_path)
         filename_without_extension = os.path.splitext(full_filename)[0]
+        if output_name_suffix:
+            filename_without_extension = f"{filename_without_extension}_{output_name_suffix}"
 
         # Define output filenames in the specified output directory
         target_spectra_export_name = os.path.join(
