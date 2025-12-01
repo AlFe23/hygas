@@ -705,3 +705,52 @@ def propagate_rmn_uncertainty(
         raise ValueError("target_spectra must be a 1-D vector or a (bands, columns) matrix.")
 
     return result
+
+
+def propagate_rmn_uncertainty_per_pixel(
+    radiance_cube: np.ndarray,
+    sigma_cube: np.ndarray,
+    target_spectra: np.ndarray,
+) -> np.ndarray:
+    """
+    Propagate matched-filter noise to per-pixel methane uncertainty (σ_RMN),
+    scaling the target spectrum with local pixel radiance.
+
+    This implementation aligns the scaling of the target vector 't' with the
+    per-pixel radiance, consistent with the per-pixel scaling of sigma_MN.
+    This should result in σ_RMN decreasing with increasing brightness,
+    as expected under the photon-shot-noise assumption.
+
+    Parameters
+    ----------
+    radiance_cube : np.ndarray
+        Scene radiance cube shaped as (bands, rows, cols). Used to compute
+        the pixel-specific target vector 't'.
+    sigma_cube : np.ndarray
+        Per-pixel noise sigma (σ_MN) cube with shape (bands, rows, cols).
+    target_spectra : np.ndarray
+        Unit methane Jacobian 's(λ)' with shape (bands,).
+
+    Returns
+    -------
+    np.ndarray
+        σ_RMN map with shape (rows, cols).
+    """
+    if radiance_cube.ndim != 3 or sigma_cube.ndim != 3:
+        raise ValueError("radiance_cube and sigma_cube must be shaped as (bands, rows, cols).")
+    if target_spectra.ndim != 1 or target_spectra.shape[0] != radiance_cube.shape[0]:
+        raise ValueError("target_spectra must be a 1-D vector matching the band count.")
+
+    # Calculate the pixel-specific target vector t(λ, p) = L(λ, p) * s(λ)
+    # target_spectra is (bands,), radiance_cube is (bands, rows, cols)
+    # Resulting t_pixel_cube is (bands, rows, cols)
+    t_pixel_cube = radiance_cube * target_spectra[:, np.newaxis, np.newaxis]
+
+    # Calculate the denominator: sum_over_bands( t(λ, p)² / σ_MN(λ, p)² )
+    # This is (bands, rows, cols) / (bands, rows, cols) -> sum over axis=0
+    denom = np.sum(t_pixel_cube**2 / (sigma_cube**2 + EPS), axis=0)
+
+    # Calculate σ_RMN(p) = 1 / sqrt(denom)
+    result = 1.0 / np.sqrt(np.clip(denom, 1e-12, None))
+
+    return result

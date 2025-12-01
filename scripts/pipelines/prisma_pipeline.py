@@ -315,11 +315,13 @@ def ch4_detection(
             )
             rad_cube_brc = np.transpose(rad_cube_for_noise, (2, 0, 1))
             sigma_cube = noise.compute_sigma_map_from_reference(reference_subset, rad_cube_brc)
-            sigma_rmn = noise.propagate_rmn_uncertainty(
+            # Average the column-wise targets to get a single base target for the per-pixel method
+            base_target = np.mean(target_spectra, axis=1)
+            sigma_rmn = noise.propagate_rmn_uncertainty_per_pixel(
+                radiance_cube=rad_cube_brc,
                 sigma_cube=sigma_cube,
-                classified_image=classified_image_for_noise,
-                mean_radiance=mean_radiance,
-                target_spectra=target_spectra,
+                # The per-pixel method uses the base target, not the column-wise one
+                target_spectra=base_target,
             ).astype(np.float32)
             if mf_mode == "advanced":
                 sigma_rmn[classified_image < 0] = np.nan

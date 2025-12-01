@@ -32,7 +32,8 @@ def _locate_repo_root(start: Path) -> Path:
 
 
 REPO_ROOT = _locate_repo_root(Path(__file__).parent)
-WINDOW = (1500.0, 2500.0)
+# WINDOW = (1500.0, 2500.0)
+WINDOW = (2100.0, 2450.0)
 LUT_PATH = next(
     (p for p in (REPO_ROOT.parent / "LUTs/CH4_lut.hdf5", REPO_ROOT / "LUTs/CH4_lut.hdf5") if p.exists()),
     REPO_ROOT.parent / "LUTs/CH4_lut.hdf5",
@@ -43,46 +44,46 @@ DEM_PATH = next(
 )
 
 PRISMA_SCENES = {
-    "ekizak_plume_prisma": {
-        "l1": REPO_ROOT
-        / "test_data/prisma/Ekizak_Turkmenistan_20220912/20220912072502_20220912072506/PRS_L1_STD_OFFL_20220912072502_20220912072506_0001.zip",
-        "l2c": REPO_ROOT
-        / "test_data/prisma/Ekizak_Turkmenistan_20220912/20220912072502_20220912072506/PRS_L2C_STD_20220912072502_20220912072506_0001.zip",
-        "dem": DEM_PATH,
-        "lut": LUT_PATH,
-        "snr_reference": REPO_ROOT
-        / "notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz",
-    },
-    "northern_state_background_prisma": {
-        "l1": REPO_ROOT
-        / "test_data/prisma/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L1_STD_OFFL_20200401085313_20200401085318_0001.zip",
-        "l2c": REPO_ROOT
-        / "test_data/prisma/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L2C_STD_20200401085313_20200401085318_0001.zip",
-        "dem": DEM_PATH,
-        "lut": LUT_PATH,
-        "snr_reference": REPO_ROOT
-        / "notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz",
-    },
+    # "ekizak_plume_prisma": {
+    #     "l1": REPO_ROOT
+    #     / "test_data/prisma/Ekizak_Turkmenistan_20220912/PRS_L1_STD_OFFL_20220912072502_20220912072506_0001.zip",
+    #     "l2c": REPO_ROOT
+    #     / "test_data/prisma/Ekizak_Turkmenistan_20220912/PRS_L2C_STD_20220912072502_20220912072506_0001.zip",
+    #     "dem": DEM_PATH,
+    #     "lut": LUT_PATH,
+    #     "snr_reference": REPO_ROOT
+    #     / "notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz",
+    # },
+    # "northern_state_background_prisma": {
+    #     "l1": REPO_ROOT
+    #     / "test_data/prisma/Northern_State_Sudan_20200401/PRS_L1_STD_OFFL_20200401085313_20200401085318_0001.zip",
+    #     "l2c": REPO_ROOT
+    #     / "test_data/prisma/Northern_State_Sudan_20200401/PRS_L2C_STD_20200401085313_20200401085318_0001.zip",
+    #     "dem": DEM_PATH,
+    #     "lut": LUT_PATH,
+    #     "snr_reference": REPO_ROOT
+    #     / "notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz",
+    # },
     "Turkmenistan_20240911_prisma": {
         "l1": REPO_ROOT
-        / "case_studies_data/Turkmenistan_20240911/prisma/20240911071147/PRS_L1_STD_OFFL_20240911071147_20240911071151_0001.zip",
+        / "case_studies_data/Turkmenistan_20240911/prisma/PRS_L1_STD_OFFL_20240911071147_20240911071151_0001.zip",
         "l2c": REPO_ROOT
-        / "case_studies_data/Turkmenistan_20240911/prisma/20240911071147/PRS_L2C_STD_20240911071147_20240911071151_0001.zip",
+        / "case_studies_data/Turkmenistan_20240911/prisma/PRS_L2C_STD_20240911071147_20240911071151_0001.zip",
         "dem": DEM_PATH,
         "lut": LUT_PATH,
         "snr_reference": REPO_ROOT
         / "notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz",
     },
-    "Ehrenberg_validation_prisma": {
-        "l1": REPO_ROOT
-        / "case_studies_data/Ehrenberg/20211021182310/PRS_L1_STD_OFFL_20211021182310_20211021182315_0001.zip",
-        "l2c": REPO_ROOT
-        / "case_studies_data/Ehrenberg/20211021182310/PRS_L2C_STD_20211021182310_20211021182315_0001.zip",
-        "dem": DEM_PATH,
-        "lut": LUT_PATH,
-        "snr_reference": REPO_ROOT
-        / "notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz",
-    },
+    # "Ehrenberg_validation_prisma": {
+    #     "l1": REPO_ROOT
+    #     / "case_studies_data/Ehrenberg/PRS_L1_STD_OFFL_20211021182310_20211021182315_0001.zip",
+    #     "l2c": REPO_ROOT
+    #     / "case_studies_data/Ehrenberg/PRS_L2C_STD_20211021182310_20211021182315_0001.zip",
+    #     "dem": DEM_PATH,
+    #     "lut": LUT_PATH,
+    #     "snr_reference": REPO_ROOT
+    #     / "notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz",
+    # },
 }
 
 # mf_mode, k, suffix label

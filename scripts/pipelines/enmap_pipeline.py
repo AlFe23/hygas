@@ -265,11 +265,11 @@ def ch4_detection_enmap(
         )
         rad_cube_brc = np.transpose(rads_array_subselection, (2, 0, 1))
         sigma_cube = noise.compute_sigma_map_from_reference(reference_subset, rad_cube_brc)
-        sigma_rmn = noise.propagate_rmn_uncertainty(
+        sigma_rmn = noise.propagate_rmn_uncertainty_per_pixel(
+            radiance_cube=rad_cube_brc,
             sigma_cube=sigma_cube,
-            classified_image=classified_image_for_noise,
-            mean_radiance=mean_radiance,
-            target_spectra=target_spectra,
+            # The per-pixel method uses the base target, not the tiled one
+            target_spectra=base_target,
         ).astype(np.float32)
         if mf_mode == "advanced":
             sigma_rmn[classified_image < 0] = np.nan
