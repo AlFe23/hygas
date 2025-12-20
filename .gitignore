@@ -25,6 +25,8 @@ htmlcov/
 /emit-ghg-main
 diff.txt
 
+/output
+
 
 *.tiff
 *.zip
