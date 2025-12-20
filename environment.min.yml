@@ -20,5 +20,6 @@ dependencies:
   - proj
   - xarray           # no channel prefix; let solver pick a compatible version
   - geopandas
+  - cartopy
   - pip:
       - docker       # Docker SDK via pip; Conda 'docker' doesn't exist on Linux

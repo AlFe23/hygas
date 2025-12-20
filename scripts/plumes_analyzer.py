@@ -4,6 +4,8 @@ import math
 from osgeo import gdal, ogr
 import geopandas as gpd
 from pyproj import CRS
+from shapely.geometry import Point
+from shapely.ops import unary_union
 
 ##############################################################
 #  SENSOR CONFIGURATION
@@ -114,10 +116,32 @@ def clip_raster_to_polygon(raster_path, polygon, out_path):
     return arr
 
 
+# def _infer_local_utm_epsg(gdf):
+#     """Infer a projected UTM EPSG code from a GeoDataFrame centroid."""
+#     gdf_wgs84 = gdf if gdf.crs.to_epsg() == 4326 else gdf.to_crs("EPSG:4326")
+#     centroid = gdf_wgs84.geometry.unary_union.centroid
+#     zone = int((centroid.x + 180) / 6) + 1
+#     base = 32600 if centroid.y >= 0 else 32700
+#     return base + zone
+
+
+
+
 def _infer_local_utm_epsg(gdf):
-    """Infer a projected UTM EPSG code from a GeoDataFrame centroid."""
+    if gdf.crs is None:
+        raise ValueError("GeoDataFrame must have a CRS defined.")
+
     gdf_wgs84 = gdf if gdf.crs.to_epsg() == 4326 else gdf.to_crs("EPSG:4326")
-    centroid = gdf_wgs84.geometry.unary_union.centroid
+    geoms = [geom for geom in gdf_wgs84.geometry if geom is not None and not geom.is_empty]
+    if not geoms:
+        raise ValueError("No valid geometries to infer UTM zone.")
+
+    try:
+        centroid = unary_union(geoms).centroid  # avoids GeoSeries.union_all
+    except TypeError:
+        minx, miny, maxx, maxy = gdf_wgs84.total_bounds
+        centroid = Point((minx + maxx) / 2, (miny + maxy) / 2)
+
     zone = int((centroid.x + 180) / 6) + 1
     base = 32600 if centroid.y >= 0 else 32700
     return base + zone
