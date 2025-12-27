@@ -22,6 +22,8 @@ htmlcov/
 /logs
 /product_spec_docs
 /notebooks/outputs
+/notebooks/outputs_cal_scenes
+/notebooks/outputs_turk_scenes
 /emit-ghg-main
 diff.txt
 
