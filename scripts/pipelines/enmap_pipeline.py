@@ -321,6 +321,7 @@ def process_directory_enmap(
     min_wavelength=2100.0,
     max_wavelength=2450.0,
     mf_mode: str = "srf-column",
+    snr_reference_path: str | None = None,
 ):
     """
     Batch driver for EnMAP directories, mirroring the legacy implementation.
@@ -359,6 +360,7 @@ def process_directory_enmap(
                     min_wavelength=min_wavelength,
                     max_wavelength=max_wavelength,
                     mf_mode=mf_mode,
+                    snr_reference_path=snr_reference_path,
                 )
                 status = "Success"
                 details = f"Processed successfully: {output_basename}"

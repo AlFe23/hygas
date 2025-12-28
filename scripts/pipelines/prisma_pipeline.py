@@ -384,6 +384,7 @@ def process_directory(
     mf_mode: str = "srf-column",
     output_root_dir=None,
     save_rads=False,
+    snr_reference_path: str | None = None,
     advanced_mf_options: dict | None = None,
 ):
     """
@@ -437,14 +438,15 @@ def process_directory(
                         L1_file,
                         L2C_file,
                         dem_file,
-                    lut_file,
-                    output_dir,
-                    min_wavelength,
-                    max_wavelength,
-                    k,
-                    mf_mode=mf_mode,
-                    save_rads=save_rads,
-                )
+                        lut_file,
+                        output_dir,
+                        min_wavelength,
+                        max_wavelength,
+                        k,
+                        mf_mode=mf_mode,
+                        save_rads=save_rads,
+                        snr_reference_path=snr_reference_path,
+                    )
                     status = "Success"
                     details = "Processed successfully (direct HE5 files)"
                 except Exception as e:
@@ -480,14 +482,15 @@ def process_directory(
                             L1_file,
                             L2C_file,
                             dem_file,
-                        lut_file,
-                        output_dir,
-                        min_wavelength,
-                        max_wavelength,
-                        k,
-                        mf_mode=mf_mode,
-                        save_rads=save_rads,
-                    )
+                            lut_file,
+                            output_dir,
+                            min_wavelength,
+                            max_wavelength,
+                            k,
+                            mf_mode=mf_mode,
+                            save_rads=save_rads,
+                            snr_reference_path=snr_reference_path,
+                        )
                         status = "Success"
                         details = "Processed successfully from extracted zip files"
                     except Exception as e:

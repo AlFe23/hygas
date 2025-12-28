@@ -45,6 +45,7 @@ Global options:
 - `--k` – number of clusters for k-means based target estimation.
 - `--log-file` – optional path to capture INFO-level logs in addition to stdout.
 - `--save-rads` – PRISMA only; export the full radiance cube GeoTIFF (disabled by default to avoid multi-GB outputs).
+- `--snr-reference` – path to the column-wise SNR reference `.npz` used for σ_RMN propagation and JPL MF. If omitted, the pipelines fall back to `PRISMA_SNR_REFERENCE` / `ENMAP_SNR_REFERENCE` env vars.
 
 ## PRISMA Manual
 
