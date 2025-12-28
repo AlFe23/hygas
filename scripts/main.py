@@ -41,6 +41,13 @@ def build_parser():
         help="Optional path to append log output (stdout logging always enabled).",
     )
     parser.add_argument(
+        "--snr-reference",
+        help=(
+            "Path to the columnwise SNR reference .npz used for uncertainty propagation "
+            "and JPL MF. Falls back to PRISMA_SNR_REFERENCE / ENMAP_SNR_REFERENCE env vars."
+        ),
+    )
+    parser.add_argument(
         "--save-rads",
         action="store_true",
         help="Save the full radiance cube GeoTIFF (PRISMA only).",
@@ -56,6 +63,7 @@ def build_parser():
     parser.add_argument("--min-wavelength", type=float, default=2100, help="Minimum wavelength (nm).")
     parser.add_argument("--max-wavelength", type=float, default=2450, help="Maximum wavelength (nm).")
     parser.add_argument(
+        "--prisma-mf-mode",
         choices=["srf-column", "full-column", "advanced", "jpl"],
         default="srf-column",
         help=(
@@ -149,6 +157,7 @@ def main(argv=None):
                     k=args.k,
                     mf_mode=args.prisma_mf_mode,
                     save_rads=args.save_rads,
+                    snr_reference_path=args.snr_reference,
                 )
             finally:
                 for extracted_file in temp_extractions:
@@ -174,6 +183,7 @@ def main(argv=None):
                 mf_mode=args.prisma_mf_mode,
                 output_root_dir=output_root,
                 save_rads=args.save_rads,
+                snr_reference_path=args.snr_reference,
             )
     else:
         if args.mode == "scene":
@@ -196,6 +206,7 @@ def main(argv=None):
                 min_wavelength=args.min_wavelength,
                 max_wavelength=args.max_wavelength,
                 mf_mode=args.enmap_mf_mode,
+                snr_reference_path=args.snr_reference,
             )
         else:
             if not args.root_directory:
@@ -207,6 +218,7 @@ def main(argv=None):
                 min_wavelength=args.min_wavelength,
                 max_wavelength=args.max_wavelength,
                 mf_mode=args.enmap_mf_mode,
+                snr_reference_path=args.snr_reference,
             )
 
 
