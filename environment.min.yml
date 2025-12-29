@@ -18,6 +18,8 @@ dependencies:
   - pyinstaller
   - latexcodec
   - proj
+  - pystac
+  - requests
   - xarray           # no channel prefix; let solver pick a compatible version
   - geopandas
   - cartopy
