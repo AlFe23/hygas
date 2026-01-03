@@ -34,6 +34,7 @@ def plot_striping_diagnostics(
     outpath: str,
     destripe_label: str,
     metadata_lines: Optional[List[str]] = None,
+    radiance_unit: str = "Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)",
 ) -> None:
     """Visualise striping mitigation before/after destriping."""
 
@@ -51,14 +52,14 @@ def plot_striping_diagnostics(
     ax_plain.set_title("Plain radiance")
     ax_plain.axis("off")
     cbar0 = fig.colorbar(im0, ax=ax_plain, fraction=0.046, pad=0.04)
-    cbar0.set_label("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+    cbar0.set_label(radiance_unit)
 
     ax_ds = fig.add_subplot(gs[0, 1])
     im1 = ax_ds.imshow(destriped_band, cmap="viridis", vmin=vmin, vmax=vmax)
     ax_ds.set_title("Destriped radiance")
     ax_ds.axis("off")
     cbar1 = fig.colorbar(im1, ax=ax_ds, fraction=0.046, pad=0.04)
-    cbar1.set_label("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+    cbar1.set_label(radiance_unit)
 
     mean_plain, std_plain = _column_stats(plain_band, mask)
     mean_ds, std_ds = _column_stats(destriped_band, mask)
@@ -69,7 +70,7 @@ def plot_striping_diagnostics(
     ax_mean.plot(cols, mean_ds, label="Destriped", alpha=0.8)
     ax_mean.set_title("Column mean (radiance)")
     ax_mean.set_xlabel("Column index")
-    ax_mean.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+    ax_mean.set_ylabel(radiance_unit)
     ax_mean.grid(alpha=0.3)
     ax_mean.legend()
 
@@ -78,7 +79,7 @@ def plot_striping_diagnostics(
     ax_std.plot(cols, std_ds, label="Destriped", alpha=0.8)
     ax_std.set_title("Column σ (radiance)")
     ax_std.set_xlabel("Column index")
-    ax_std.set_ylabel("σ (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+    ax_std.set_ylabel(f"σ ({radiance_unit.split(' ',1)[1] if ' ' in radiance_unit else radiance_unit})")
     ax_std.grid(alpha=0.3)
     ax_std.legend()
 

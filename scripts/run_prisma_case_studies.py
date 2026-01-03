@@ -32,8 +32,8 @@ def _locate_repo_root(start: Path) -> Path:
 
 
 REPO_ROOT = _locate_repo_root(Path(__file__).parent)
-# WINDOW = (1500.0, 2500.0)
-WINDOW = (2100.0, 2450.0)
+WINDOW = (1500.0, 2500.0)
+# WINDOW = (2100.0, 2450.0)
 LUT_PATH = next(
     (p for p in (REPO_ROOT.parent / "LUTs/CH4_lut.hdf5", REPO_ROOT / "LUTs/CH4_lut.hdf5") if p.exists()),
     REPO_ROOT.parent / "LUTs/CH4_lut.hdf5",

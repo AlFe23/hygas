@@ -18,7 +18,7 @@ import numpy as np
 
 from .core import noise, targets
 from .diagnostics import plots, pca_tools, striping
-from .satellites import emit_utils, enmap_utils, prisma_utils
+from .satellites import emit_utils, enmap_utils, prisma_utils, tanager_utils
 
 
 PRISMA_REFERENCE_BANDS = {"vnir_index": 43, "swir_index": 202}  # 1-based indices
@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="A–H SNR experiment without tiling.")
     parser.add_argument(
         "--sensor",
-        choices=["prisma", "enmap", "emit"],
+        choices=["prisma", "enmap", "emit", "tanager"],
         required=True,
         help="Target sensor.",
     )
@@ -199,6 +199,7 @@ class SceneData:
     metadata: Dict[str, str]
     geometry_lines: List[str]
     reference_wavelengths: Dict[str, Optional[float]]
+    radiance_unit: str = "Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)"
 
 
 def resolve_prisma_path(path: Optional[str]) -> Optional[str]:
@@ -211,6 +212,25 @@ def resolve_prisma_path(path: Optional[str]) -> Optional[str]:
             raise FileNotFoundError(f"No .he5 found inside ZIP {path}.")
         return extracted
     return abs_path
+
+
+def resolve_tanager_path(path: Optional[str]) -> Optional[str]:
+    """
+    Resolve a Tanager HDF5 path, extracting from ZIP when needed.
+    """
+
+    if path is None:
+        return None
+    abs_path = os.path.abspath(path)
+    lower = abs_path.lower()
+    if lower.endswith(".zip"):
+        extracted = tanager_utils.extract_hdf_from_zip(abs_path, os.path.dirname(abs_path))
+        if extracted is None:
+            raise FileNotFoundError(f"No HDF5 file found inside ZIP {path}.")
+        return extracted
+    if lower.endswith((".h5", ".hdf", ".hdf5")):
+        return abs_path
+    raise ValueError(f"Unsupported Tanager input format: {path}")
 
 
 def load_prisma_scene(inputs: Sequence[str]) -> SceneData:
@@ -303,6 +323,7 @@ def load_prisma_scene(inputs: Sequence[str]) -> SceneData:
         metadata=metadata,
         geometry_lines=geometry_lines,
         reference_wavelengths=reference_wavelengths,
+        radiance_unit="Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)",
     )
 
 
@@ -393,12 +414,52 @@ def load_enmap_scene(inputs: Sequence[str]) -> SceneData:
         metadata=metadata,
         geometry_lines=geometry_lines,
         reference_wavelengths=reference_wavelengths,
+        radiance_unit="Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)",
     )
 
 
 def load_emit_scene(inputs: Sequence[str]) -> SceneData:
     payload = emit_utils.load_emit_scene(inputs)
+    payload.setdefault("radiance_unit", "Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
     return SceneData(**payload)
+
+
+def load_tanager_scene(inputs: Sequence[str]) -> SceneData:
+    """
+    Load Tanager TOA radiance HDF5 (Basic/Ortho). Assumes column-invariant CW/FWHM.
+    """
+
+    if not inputs:
+        raise ValueError("Tanager requires a radiance HDF5 input.")
+
+    h5_path = resolve_tanager_path(inputs[0])
+    cube = tanager_utils.load_tanager_cube(h5_path, dataset_path=tanager_utils.TANAGER_TOA_RADIANCE_DATASET)
+
+    rad = cube.data.astype(np.float32, copy=True)
+    nodata = cube.masks.get("nodata_pixels")
+    if nodata is not None:
+        rad = np.where(nodata[None, ...] != 0, np.nan, rad)
+
+    wl = np.asarray(cube.wavelengths, dtype=float) if cube.wavelengths is not None else np.array([], dtype=float)
+
+    scene_id = Path(h5_path).stem
+    metadata = {"radiance_hdf": inputs[0]}
+    geometry_lines = [
+        f"Scene: {scene_id}",
+        "Geometry source: Tanager HDF metadata (per-band CW/FWHM assumed constant across columns).",
+    ]
+
+    reference_wavelengths: Dict[str, Optional[float]] = {"vnir_nm": None, "swir_nm": None}
+
+    return SceneData(
+        cube=rad,
+        wavelengths=wl,
+        scene_id=scene_id,
+        metadata=metadata,
+        geometry_lines=geometry_lines,
+        reference_wavelengths=reference_wavelengths,
+        radiance_unit="Radiance (W m$^{-2}$ sr$^{-1}$ µm$^{-1}$)",
+    )
 
 
 def select_bands(cube: np.ndarray, wl: np.ndarray, band_range: Tuple[float, float]) -> Tuple[np.ndarray, np.ndarray]:
@@ -444,6 +505,7 @@ def run_cases(
     outdir: Path,
     metadata_lines: Optional[List[str]],
     reference_wavelengths: Dict[str, Optional[float]],
+    radiance_unit: str,
 ) -> Dict[str, Dict[str, object]]:
     diff_axis = 1 if args.diff_axis == "columns" else 0
     cases_requested = [c.strip().upper() for c in args.cases.split(",") if c.strip()]
@@ -521,6 +583,7 @@ def run_cases(
         outdir / "pca_summary_plain.png",
         metadata_lines=metadata_lines,
         reference_wavelengths=reference_wavelengths,
+        radiance_unit=radiance_unit,
     )
     pca_tools.plot_pca_summary(
         model_ds,
@@ -531,6 +594,7 @@ def run_cases(
         outdir / "pca_summary_destriped.png",
         metadata_lines=metadata_lines,
         reference_wavelengths=reference_wavelengths,
+        radiance_unit=radiance_unit,
     )
 
     return results
@@ -543,6 +607,8 @@ def main():
         scene = load_prisma_scene(args.input)
     elif args.sensor == "enmap":
         scene = load_enmap_scene(args.input)
+    elif args.sensor == "tanager":
+        scene = load_tanager_scene(args.input)
     else:
         scene = load_emit_scene(args.input)
 
@@ -584,6 +650,7 @@ def main():
         outdir,
         scene.geometry_lines,
         scene.reference_wavelengths,
+        scene.radiance_unit,
     )
 
     # Striping diagnostics
@@ -610,6 +677,7 @@ def main():
         outdir / "striping_diagnostics.png",
         destripe_label,
         metadata_lines=scene.geometry_lines,
+        radiance_unit=scene.radiance_unit,
     )
 
     # Overview plot

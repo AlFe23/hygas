@@ -367,42 +367,50 @@ def prisma_read(filename):
     vnir_cube_bip = np.rot90(vnir_cube_bip, k=-1, axes=(0, 1))  # Rotate 270 degrees counterclockwise
     swir_cube_bip = np.rot90(swir_cube_bip, k=-1, axes=(0, 1))  # Rotate 270 degrees counterclockwise
 
-    # PROBLEMA:
-    # Si è trovato che le bande 1,2,3 del VNIR cube e le bande 172,173 dello SWIR cube sono azzerate:
-    # Q&A PRISMA_ATBD.pdf pg.118
-    # VNIR: Remove bands 1, 2, 3 (0-indexed: 0, 1, 2), for these bands CWs and FWHMs are already set to 0.
-    VNIR_cube_clean = np.delete(vnir_cube_bip, [0, 1, 2], axis=2)
-    # SWIR: Remove bands 172, 173 (0-indexed: 171, 172), for these bands CWs and FWHMs are already set to 0.
-    SWIR_cube_clean = np.delete(swir_cube_bip, [171, 172], axis=2)
-    # SWIR: Remove bands 1, 2, 3, 4, since they are redundant with the last 4 bands of VNIR cube
-    SWIR_cube_clean = np.delete(SWIR_cube_clean, [0, 1, 2, 3], axis=2)
+    # Helper: slice CW/FWHM matrices to the spectral span that matches the cube,
+    # then drop columns with CW=0 (as SNAP reader does), and reorder to ascending wavelength.
+    def _slice_to_bands(arr, n_bands):
+        col_max = np.nanmax(arr, axis=0)
+        nz = np.where(col_max > 0)[0]
+        if nz.size == 0:
+            return arr[:, :n_bands]
+        first, last = int(nz[0]), int(nz[-1])
+        span = n_bands
+        start = max(0, first - max(0, span - (last - first + 1)))
+        stop = start + span
+        return arr[:, start:stop]
 
-    # Extract actual values of CWs and FWHMs. They are stored in standars (1000,256) arrays and have to be extracted
-    cw_vnir = cw_vnir[:, 99:162]
-    fwhm_vnir = fwhm_vnir[:, 99:162]
-    cw_swir = cw_swir[:, 81:252]
-    fwhm_swir = fwhm_swir[:, 81:252]
+    def _clean_cube(cube, cw_mat, fwhm_mat):
+        cw_slice = _slice_to_bands(cw_mat, cube.shape[2])
+        fwhm_slice = _slice_to_bands(fwhm_mat, cube.shape[2])
+        mask = np.nanmax(cw_slice, axis=0) > 0
+        cw_slice = cw_slice[:, mask]
+        fwhm_slice = fwhm_slice[:, mask]
+        cube = cube[:, :, mask]
+        cw_vec = np.nanmean(cw_slice, axis=0)
+        if cw_vec.size > 1 and cw_vec[0] > cw_vec[-1]:
+            cw_slice = cw_slice[:, ::-1]
+            fwhm_slice = fwhm_slice[:, ::-1]
+            cube = cube[:, :, ::-1]
+        return cube, cw_slice, fwhm_slice
 
-    # Reverse CWs and FWHMs vectors as they are in decrasing frequency order, but we want them opposite
-    cw_vnir = cw_vnir[:, ::-1]
-    fwhm_vnir = fwhm_vnir[:, ::-1]
-    cw_swir = cw_swir[:, ::-1]
-    fwhm_swir = fwhm_swir[:, ::-1]
+    VNIR_cube_clean, cw_vnir_clean, fwhm_vnir_clean = _clean_cube(vnir_cube_bip, cw_vnir, fwhm_vnir)
+    SWIR_cube_clean, cw_swir_clean, fwhm_swir_clean = _clean_cube(swir_cube_bip, cw_swir, fwhm_swir)
 
-    # SWIR: Remove bands 1, 2, 3, 4, since they are redundant with the last 4 bands of VNIR cube
-    cw_swir_clean = np.delete(cw_swir, [0, 1, 2, 3], axis=1)
-    fwhm_swir_clean = np.delete(fwhm_swir, [0, 1, 2, 3], axis=1)
-
-    # Let's now concatenate the arrays for radiance cube, central wavelengths and FWHMs
-    concatenated_cube = np.concatenate((SWIR_cube_clean, VNIR_cube_clean), axis=2)
-    concatenated_cube = concatenated_cube[:, :, ::-1]
-    concatenated_cw = np.concatenate((cw_vnir, cw_swir_clean), axis=1)
-    concatenated_fwhm = np.concatenate((fwhm_vnir, fwhm_swir_clean), axis=1)
+    # Concatenate in ascending wavelength order (VNIR then SWIR)
+    concatenated_cube = np.concatenate((VNIR_cube_clean, SWIR_cube_clean), axis=2)
+    concatenated_cw = np.concatenate((cw_vnir_clean, cw_swir_clean), axis=1)
+    concatenated_fwhm = np.concatenate((fwhm_vnir_clean, fwhm_swir_clean), axis=1)
 
     # Print the RGB image
-    red_channel = concatenated_cube[:, :, 29]  # Red channel
-    green_channel = concatenated_cube[:, :, 19]  # Green channel
-    blue_channel = concatenated_cube[:, :, 7]  # Blue channel
+    cw_vector = np.nanmean(concatenated_cw, axis=0)
+
+    def _closest_idx(target_nm):
+        return int(np.nanargmin(np.abs(cw_vector - target_nm)))
+
+    red_channel = concatenated_cube[:, :, _closest_idx(650.0)]
+    green_channel = concatenated_cube[:, :, _closest_idx(560.0)]
+    blue_channel = concatenated_cube[:, :, _closest_idx(490.0)]
 
     # Normalize each channel to the range [0, 1]
     red_normalized = (red_channel - red_channel.min()) / (red_channel.max() - red_channel.min())

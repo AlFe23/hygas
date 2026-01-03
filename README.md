@@ -183,12 +183,14 @@ All notebooks live under `notebooks/` and are wired to the repository code via `
 - `matched_filter_demo_prisma.ipynb` – same workflow for PRISMA L1/L2C data (ZIP or HE5) alongside DEM/LUT/SNR assets. **Outputs:** RGB, concentration, and σ₍RMN₎ rasters under `notebooks/outputs/pipeline_demo/prisma/`.
 - `SNR_experiments_enmap.ipynb` – orchestrates the eight-case SNR CLI runs for EnMAP. **Inputs:** scene configurations (paths/ROIs/band windows/case lists/destriping flags). **Outputs:** CLI artefacts such as `striping_diagnostics.png`, `pca_summary_*.png`, `snr_cases_*.csv|png`, and logs under `notebooks/outputs/enmap/<scene_id>/` plus inline listings.
 - `SNR_experiments_prisma.ipynb` – identical orchestration for PRISMA L1/L2C scenes with the same output family stored in `notebooks/outputs/prisma/<scene_id>/`.
+- `SNR_experiments_tanager.ipynb` – runs the A–H SNR pipeline for Tanager radiance HDF5 (ROI-aware; unit labels per Tanager spec).
 - `diagnostics_uncertainty_enmap.ipynb` – documents how σ₍RMN₎ is produced for EnMAP by walking through band selection, k-means background stats, LUT target synthesis, SNR-reference mapping, and uncertainty propagation. **Inputs:** EnMAP scene folder, DEM, LUT, SNR reference. **Outputs:** console summaries plus an inline σ₍RMN₎ map.
 - `diagnostics_uncertainty_prisma.ipynb` – mirrors the above steps for PRISMA L1/L2C inputs, yielding the propagated σ₍RMN₎ raster preview.
 - `uncertainty_analysis_enmap.ipynb` – consumes finished EnMAP matched-filter concentration/uncertainty rasters (and optional plume polygons) to compute σ_tot, representative σ₍RMN₎, derived σ_Surf, and plume-level total uncertainty. **Outputs:** diagnostic figures and a JSON metrics report saved to `notebooks/outputs/uncertainty/enmap/`.
 - `uncertainty_analysis_prisma.ipynb` – same clutter-versus-instrument breakdown for PRISMA products with metrics saved in `notebooks/outputs/uncertainty/prisma/`.
 - `prisma_enmap_comparison.ipynb` – cross-sensor analysis that loads the reference PRISMA/EnMAP cubes plus precomputed SNR cases to compare SNR (case D), spectral smile, and striping metrics. **Outputs:** comparison tables/plots rendered inline and saved next to the configured output directories.
 - `test_notebook.ipynb` – minimal placeholder to verify the notebook environment; no external inputs/outputs.
+- `SNR_experiments_tanager.ipynb` – runs the A–H SNR experiment pipeline for Tanager radiance HDF5 (same CLI wrapper used for PRISMA/EnMAP).
 
 ## PRISMA HDF Exploration
 
@@ -212,3 +214,22 @@ Use `scripts/inspect_prisma_hdf.py` to explore the hierarchy of a Level-1 or Lev
   ```
 
 Append `--output /path/to/report.txt` to save the listing to disk in addition to printing it on screen. `--path` accepts any HDF dataset/group path, `--preview` limits how many numeric values are sampled (the script only reads a thin block to avoid loading whole cubes), and `--max-members` caps how many children are listed when inspecting a group.
+
+## Tanager HDF Exploration
+
+Two small utilities help verify Planet Tanager Basic/Ortho HDF5 deliveries (see `product_spec_docs/tanager/Planet-UserDocumentation-Tanager.pdf` for the field definitions).
+
+- Inspect hierarchy or a specific dataset/attribute (ZIP inputs are unpacked automatically):
+
+  ```bash
+  python scripts/inspect_tanager_hdf.py /path/to/tanager_scene.h5 --max-depth 2 --attrs
+  python scripts/inspect_tanager_hdf.py /path/to/tanager_scene.zip --path "HDFEOS/SWATHS/HYP/Data Fields/toa_radiance" --preview 8
+  ```
+
+- Build a quick RGB preview from the TOA radiance cube (auto-selects 665/565/490 nm bands and applies a 2–98% stretch):
+
+  ```bash
+  python scripts/tanager_quicklook.py /path/to/tanager_scene.h5 --summary --output outputs/tanager_rgb.png
+  ```
+
+Use `--rgb-wavelengths`, `--stretch`, or `--gamma` to tweak the quicklook rendering, `--pixel r c` to print a per-pixel spectrum, and `--no-mask` to skip applying the `nodata_pixels` mask when deriving RGB.

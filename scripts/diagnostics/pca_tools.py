@@ -118,6 +118,7 @@ def plot_pca_summary(
     max_maps: int = 6,
     metadata_lines: Optional[List[str]] = None,
     reference_wavelengths: Optional[Dict[str, Optional[float]]] = None,
+    radiance_unit: str = "Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)",
 ) -> None:
     """Generate a PCA diagnostics figure summarising variance, components and residuals."""
 
@@ -127,7 +128,7 @@ def plot_pca_summary(
         ax.plot(wl, model.get("mean_spectrum", np.zeros_like(wl)), color="C0")
         ax.set_title("PCA skipped: insufficient valid pixels")
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+        ax.set_ylabel(radiance_unit)
         ax.grid(alpha=0.3)
         header_lines = list(metadata_lines) if metadata_lines else []
         scene_label = header_lines[0] if header_lines else None
@@ -236,7 +237,7 @@ def plot_pca_summary(
         ax.set_title(f"{label} {wl[band_idx]:.1f} nm")
         ax.axis("off")
         cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+        cbar.set_label(radiance_unit)
 
     _plot_residual_map(ax_swir, swir_idx, "Residual SWIR")
     _plot_residual_map(ax_vnir, vnir_idx, "Residual VNIR")
@@ -252,7 +253,7 @@ def plot_pca_summary(
     ax_specpix.plot(wl, recon_spec, label="Reconstruction", lw=1.2)
     ax_specpix.plot(wl, resid_spec, label="Residual", lw=1.0)
     ax_specpix.set_xlabel("Wavelength (nm)")
-    ax_specpix.set_ylabel("Radiance (µW cm$^{-2}$ sr$^{-1}$ nm$^{-1}$)")
+    ax_specpix.set_ylabel(radiance_unit)
     ax_specpix.set_title(f"Spectrum at pixel ({rr}, {cc})")
     ax_specpix.grid(alpha=0.3)
     ax_specpix.legend(fontsize=8)
