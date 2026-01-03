@@ -14,8 +14,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.pipelines import prisma_pipeline, enmap_pipeline  # type: ignore
-from scripts.satellites import prisma_utils  # type: ignore
+from scripts.pipelines import prisma_pipeline, enmap_pipeline, tanager_pipeline  # type: ignore
+from scripts.satellites import prisma_utils, tanager_utils  # type: ignore
 
 
 def build_parser():
@@ -24,7 +24,7 @@ def build_parser():
     )
     parser.add_argument(
         "--satellite",
-        choices=["prisma", "enmap"],
+        choices=["prisma", "enmap", "tanager"],
         required=True,
         help="Satellite to process.",
     )
@@ -86,6 +86,21 @@ def build_parser():
             "columnwise SRF workflow, 'full-column' estimates per-column mean/covariance "
             "without clustering, and 'advanced' activates the grouped PCA + shrinkage workflow."
         ),
+    )
+    # Tanager specific
+    parser.add_argument(
+        "--tanager-rad",
+        help="Tanager radiance HDF5 path (basic/ortho radiance). Accepts .h5/.hdf5 or .zip containing it.",
+    )
+    parser.add_argument(
+        "--tanager-sr",
+        help="Tanager surface reflectance HDF5 path (for water vapour). Accepts .h5/.hdf5 or .zip containing it.",
+    )
+    parser.add_argument(
+        "--tanager-mf-mode",
+        choices=["srf-column", "full-column", "advanced", "jpl"],
+        default="srf-column",
+        help="Tanager matched-filter variant (single CW/FWHM grid).",
     )
 
     return parser
@@ -185,7 +200,7 @@ def main(argv=None):
                 save_rads=args.save_rads,
                 snr_reference_path=args.snr_reference,
             )
-    else:
+    elif args.satellite == "enmap":
         if args.mode == "scene":
             required = ["vnir", "swir", "metadata"]
             missing = [opt for opt in required if getattr(args, opt) is None]
@@ -220,6 +235,60 @@ def main(argv=None):
                 mf_mode=args.enmap_mf_mode,
                 snr_reference_path=args.snr_reference,
             )
+    else:  # tanager
+        if args.mode != "scene":
+            parser.error("Tanager batch mode not implemented yet (use --mode scene).")
+        required = ["tanager_rad", "tanager_sr", "dem"]
+        missing = [opt for opt in required if getattr(args, opt) is None]
+        if missing:
+            parser.error(f"Missing required Tanager arguments: {', '.join(missing)}")
+
+        temp_extractions: list[str] = []
+
+        def resolve_tanager_input(path: str, label: str) -> str:
+            path_obj = Path(path)
+            if not path_obj.exists():
+                parser.error(f"{label} file not found: {path}")
+            suffix = path_obj.suffix.lower()
+            if suffix in {".h5", ".hdf5"}:
+                return str(path_obj)
+            if suffix == ".zip":
+                extracted = tanager_utils.extract_hdf_from_zip(str(path_obj), str(path_obj.parent))
+                if not extracted:
+                    parser.error(f"Zip archive for {label} does not contain an HDF5 file: {path}")
+                temp_extractions.append(extracted)
+                return extracted
+            parser.error(f"Unsupported {label} format: {path}. Expected .h5/.hdf5 or .zip")
+
+        rad_file = resolve_tanager_input(args.tanager_rad, "radiance")
+        sr_file = resolve_tanager_input(args.tanager_sr, "surface reflectance")
+        output_dir = args.output
+        if output_dir is None:
+            rad_path = Path(rad_file).resolve()
+            scene_dir = rad_path.parent
+            output_dir = str(scene_dir.parent / f"{scene_dir.name}_output")
+
+        try:
+            tanager_pipeline.ch4_detection_tanager(
+                radiance_file=rad_file,
+                sr_file=sr_file,
+                dem_file=args.dem,
+                lut_file=args.lut,
+                output_dir=output_dir,
+                k=args.k,
+                min_wavelength=args.min_wavelength,
+                max_wavelength=args.max_wavelength,
+                snr_reference_path=args.snr_reference,
+                mf_mode=args.tanager_mf_mode,
+            )
+        finally:
+            for extracted_file in temp_extractions:
+                try:
+                    Path(extracted_file).unlink(missing_ok=True)
+                except Exception as cleanup_error:  # pragma: no cover
+                    logging.getLogger(__name__).warning(
+                        "Could not remove temporary file %s: %s", extracted_file, cleanup_error
+                    )
 
 
 if __name__ == "__main__":

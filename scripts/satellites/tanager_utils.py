@@ -12,10 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 import zipfile
+import subprocess
+import tempfile
 
 import h5py
 import imageio
 import numpy as np
+from osgeo import gdal, osr
 
 # Canonical dataset paths from the product specification
 TANAGER_TOA_RADIANCE_DATASET = "HDFEOS/SWATHS/HYP/Data Fields/toa_radiance"
@@ -227,6 +230,25 @@ def load_tanager_cube(
     )
 
 
+def open_hdf(path: str, mode: str = "r") -> h5py.File:
+    """Light wrapper for h5py.File to keep imports local to this module."""
+    return h5py.File(path, mode)
+
+
+def bounding_box(cube: TanagerCube) -> tuple[float, float, float, float]:
+    """Return (min_lon, max_lon, min_lat, max_lat) from cube geolocation."""
+    lat = cube.geolocation.get("latitude")
+    lon = cube.geolocation.get("longitude")
+    if lat is None or lon is None:
+        raise ValueError("Cube geolocation missing latitude/longitude.")
+    return (
+        float(np.nanmin(lon)),
+        float(np.nanmax(lon)),
+        float(np.nanmin(lat)),
+        float(np.nanmax(lat)),
+    )
+
+
 def _closest_band_indices(wavelengths: np.ndarray, targets_nm: Sequence[float]) -> list[int]:
     """
     Return band indices closest to the requested wavelengths (nm).
@@ -322,3 +344,81 @@ def extract_hdf_from_zip(zip_path: str, output_dir: str) -> str | None:
         if extracted != flat_path:
             extracted.rename(flat_path)
         return str(flat_path)
+
+
+def _write_temp_geolocated(dst_path: str, data: np.ndarray, lat: np.ndarray, lon: np.ndarray) -> None:
+    """
+    Write data (rows, cols [,bands]) to GeoTIFF using lat/lon geolocation arrays (same shape).
+    """
+
+    data = data.astype(np.float32)
+    rows, cols = data.shape[:2]
+    bands = 1 if data.ndim == 2 else data.shape[2]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp_file = Path(tmpdir) / "temp_data.tif"
+        vrt_file = Path(tmpdir) / "temp_data.vrt"
+        lat_file = Path(tmpdir) / "lat.tif"
+        lon_file = Path(tmpdir) / "lon.tif"
+
+        driver = gdal.GetDriverByName("GTiff")
+        lat_ds = driver.Create(str(lat_file), cols, rows, 1, gdal.GDT_Float32)
+        lon_ds = driver.Create(str(lon_file), cols, rows, 1, gdal.GDT_Float32)
+        lat_ds.GetRasterBand(1).WriteArray(lat.astype(np.float32))
+        lon_ds.GetRasterBand(1).WriteArray(lon.astype(np.float32))
+        lat_ds = None
+        lon_ds = None
+
+        ds = driver.Create(str(temp_file), cols, rows, bands, gdal.GDT_Float32)
+        if bands == 1:
+            ds.GetRasterBand(1).WriteArray(data)
+        else:
+            for i in range(bands):
+                ds.GetRasterBand(i + 1).WriteArray(data[:, :, i])
+        ds.FlushCache()
+        ds = None
+
+        vrt_options = gdal.TranslateOptions(format="VRT")
+        gdal.Translate(str(vrt_file), str(temp_file), options=vrt_options)
+
+        vrt_ds = gdal.Open(str(vrt_file), gdal.GA_Update)
+        vrt_ds.SetMetadata(
+            {
+                "X_DATASET": str(lon_file),
+                "X_BAND": "1",
+                "Y_DATASET": str(lat_file),
+                "Y_BAND": "1",
+                "PIXEL_OFFSET": "0",
+                "LINE_OFFSET": "0",
+                "PIXEL_STEP": "1",
+                "LINE_STEP": "1",
+            },
+            "GEOLOCATION",
+        )
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        vrt_ds.SetProjection(srs.ExportToWkt())
+        vrt_ds = None
+
+        subprocess.run(
+            ["gdalwarp", "-geoloc", "-t_srs", "EPSG:4326", str(vrt_file), dst_path],
+            check=True,
+        )
+
+
+def save_with_geolocation_single_band(data: np.ndarray, path: str, cube: TanagerCube) -> None:
+    """Save a single-band array (rows, cols) using cube geolocation."""
+    lat = cube.geolocation.get("latitude")
+    lon = cube.geolocation.get("longitude")
+    if lat is None or lon is None:
+        raise ValueError("Latitude/Longitude not loaded in cube.geolocation.")
+    _write_temp_geolocated(path, data, lat, lon)
+
+
+def save_with_geolocation_multichannel(data: np.ndarray, path: str, cube: TanagerCube) -> None:
+    """Save a multichannel array (rows, cols, bands) using cube geolocation."""
+    lat = cube.geolocation.get("latitude")
+    lon = cube.geolocation.get("longitude")
+    if lat is None or lon is None:
+        raise ValueError("Latitude/Longitude not loaded in cube.geolocation.")
+    _write_temp_geolocated(path, data, lat, lon)
