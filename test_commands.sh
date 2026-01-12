@@ -144,6 +144,74 @@ python scripts/inspect_prisma_hdf.py \
   --max-depth 5 --attrs --output "${PARENT_ROOT}/SNR/PRISMA_calibration_data/Northern_State_Sudan_20200401/20200401085313_20200401085318/PRS_L2C_STD_20200401085313_20200401085318_0001_structure.txt"
 
 
+# Batch MF con gli script run_*_case_studies (tutte le modalità MF predefinite)
+echo "Running EnMAP case studies (predefiniti in run_enmap_case_studies.py)..."
+python scripts/run_enmap_case_studies.py
+
+echo "Running EnMAP case studies su una cartella personalizzata..."
+python - <<'PY'
+from pathlib import Path
+import scripts.run_enmap_case_studies as runner
+
+ROOT = Path("/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/case_studies_data_tanager_paper/EnMAP/processed")
+SNR_REF = Path("notebooks/outputs/enmap/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/snr_reference_columnwise.npz").resolve()
+
+for folder in sorted(ROOT.iterdir()):
+    if not folder.is_dir():
+        continue
+    vnir = next(folder.glob("*-SPECTRAL_IMAGE_VNIR.TIF"), None)
+    swir = next(folder.glob("*-SPECTRAL_IMAGE_SWIR.TIF"), None)
+    meta = next(folder.glob("*-METADATA.XML"), None)
+    if not (vnir and swir and meta):
+        print(f"Skip {folder.name}: missing VNIR/SWIR/metadata")
+        continue
+    cfg = {"vnir": vnir, "swir": swir, "metadata": meta, "lut": runner.LUT_PATH, "snr_reference": SNR_REF}
+    print(f"\n=== {folder.name} ===")
+    runner.run_case_study(folder.name, cfg)
+PY
+
+echo "Running PRISMA case studies (predefiniti in run_prisma_case_studies.py)..."
+python scripts/run_prisma_case_studies.py
+
+echo "Running PRISMA case studies su una cartella personalizzata..."
+python - <<'PY'
+from pathlib import Path
+import scripts.run_prisma_case_studies as runner
+
+ROOT = Path("/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/case_studies_tanager/PRISMA/processed")
+SNR_REF = Path("notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz").resolve()
+
+for folder in sorted(ROOT.iterdir()):
+    if not folder.is_dir():
+        continue
+    l1 = next(folder.glob("PRS_L1_STD_OFFL*.zip"), None) or next(folder.glob("PRS_L1_STD_OFFL*.he5"), None)
+    l2c = next(folder.glob("PRS_L2C_STD*.zip"), None) or next(folder.glob("PRS_L2C_STD*.he5"), None)
+    if not (l1 and l2c):
+        print(f"Skip {folder.name}: missing L1/L2C")
+        continue
+    cfg = {"l1": l1, "l2c": l2c, "dem": runner.DEM_PATH, "lut": runner.LUT_PATH, "snr_reference": SNR_REF}
+    print(f"\n=== {folder.name} ===")
+    runner.run_case_study(folder.name, cfg)
+PY
+
+echo "Running Tanager case studies (predefiniti in run_tanager_case_studies.py)..."
+python scripts/run_tanager_case_studies.py
+
+echo "Running Tanager case studies su una cartella personalizzata..."
+python - <<'PY'
+from pathlib import Path
+import scripts.run_tanager_case_studies as runner
+
+ROOT = Path("/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Tanager/core_images/data/urban")
+runner._ensure_assets_exist()
+scenes = runner._discover_scenes(ROOT)
+print(f"Trovate {len(scenes)} scene:", [s['name'] for s in scenes])
+for cfg in scenes:
+    print(f"\n=== {cfg['name']} ===")
+    runner.run_scene(cfg)
+PY
+
+
 
 
 
@@ -169,4 +237,3 @@ python scripts/main.py \
   --min-wavelength 2100 --max-wavelength 2450 --k 1 \
   --prisma-mf-mode full-column \
   --log-file logs/prisma_batch_articolo.log
-
