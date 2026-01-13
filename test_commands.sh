@@ -202,7 +202,7 @@ python - <<'PY'
 from pathlib import Path
 import scripts.run_tanager_case_studies as runner
 
-ROOT = Path("/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Tanager/core_images/data/urban")
+ROOT = Path("/mnt/d/case_studies_tanager/Tanager_Calibration/Sudan")
 runner._ensure_assets_exist()
 scenes = runner._discover_scenes(ROOT)
 print(f"Trovate {len(scenes)} scene:", [s['name'] for s in scenes])
