@@ -13,6 +13,7 @@ from shapely.ops import unary_union
 
 SENSOR_CONFIG = {
     "PRISMA": {"a": 0.37, "b": 0.70},
+    "TANAGER": {"a": 0.37, "b": 0.70},  # use PRISMA coefficients unless overridden
     "ENMAP":  {"a": 0.37, "b": 0.69},
     "EMIT":   {"a": 0.45, "b": 0.67},
 }
