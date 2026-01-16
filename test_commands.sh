@@ -173,12 +173,13 @@ PY
 echo "Running PRISMA case studies (predefiniti in run_prisma_case_studies.py)..."
 python scripts/run_prisma_case_studies.py
 
+
 echo "Running PRISMA case studies su una cartella personalizzata..."
 python - <<'PY'
 from pathlib import Path
 import scripts.run_prisma_case_studies as runner
 
-ROOT = Path("/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/case_studies_tanager/PRISMA/processed")
+ROOT = Path("/mnt/d/case_studies_tanager/Hassi_Messaoud_PRISMA")
 SNR_REF = Path("notebooks/outputs/prisma/20200401085313/snr_reference_columnwise.npz").resolve()
 
 for folder in sorted(ROOT.iterdir()):
