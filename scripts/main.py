@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Unified entry point for PRISMA and EnMAP methane matched-filter processing.
+Unified entry point for PRISMA, EnMAP, and Tanager methane matched-filter processing.
 It wraps the satellite-specific pipelines built on top of the shared core modules.
 """
 
@@ -20,7 +20,7 @@ from scripts.satellites import prisma_utils, tanager_utils  # type: ignore
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Methane matched-filter processing for PRISMA and EnMAP scenes."
+        description="Methane matched-filter processing for PRISMA, EnMAP, and Tanager scenes."
     )
     parser.add_argument(
         "--satellite",
@@ -44,7 +44,7 @@ def build_parser():
         "--snr-reference",
         help=(
             "Path to the columnwise SNR reference .npz used for uncertainty propagation "
-            "and JPL MF. Falls back to PRISMA_SNR_REFERENCE / ENMAP_SNR_REFERENCE env vars."
+            "and JPL MF. Falls back to PRISMA_SNR_REFERENCE / ENMAP_SNR_REFERENCE / TANAGER_SNR_REFERENCE env vars."
         ),
     )
     parser.add_argument(
@@ -69,7 +69,7 @@ def build_parser():
         help=(
             "PRISMA matched-filter variant: 'srf-column' (default) uses clustering with column-wise SRF "
             "targets, 'full-column' estimates per-column mean/covariance without clustering, and "
-            "'advanced' enables the grouped PCA + shrinkage workflow."
+            "'advanced' enables the grouped PCA + shrinkage workflow, while 'jpl' runs the JPL/EMIT MF adaptation."
         ),
     )
 
@@ -84,7 +84,8 @@ def build_parser():
         help=(
             "EnMAP matched-filter variant: 'srf-column' (default) keeps the cluster-tuned "
             "columnwise SRF workflow, 'full-column' estimates per-column mean/covariance "
-            "without clustering, and 'advanced' activates the grouped PCA + shrinkage workflow."
+            "without clustering, 'advanced' activates the grouped PCA + shrinkage workflow, and "
+            "'jpl' runs the JPL/EMIT MF adaptation."
         ),
     )
     # Tanager specific
@@ -100,7 +101,7 @@ def build_parser():
         "--tanager-mf-mode",
         choices=["srf-column", "full-column", "advanced", "jpl"],
         default="srf-column",
-        help="Tanager matched-filter variant (single CW/FWHM grid).",
+        help="Tanager matched-filter variant (single CW/FWHM grid; includes JPL MF adaptation).",
     )
 
     return parser

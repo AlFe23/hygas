@@ -1,14 +1,36 @@
-# Methane Matched-Filter Pipelines
+# HyGAS (Hyperspectral Gas Analysis Suite)
 
-This repository hosts the refactored CH₄ detection workflows for PRISMA and EnMAP satellites. The legacy monolithic scripts (`scripts/PRISMA/prisma_MF.py`, `scripts/EnMAP/enmap_MF.py`) now route through a modular package under `scripts/`, with shared LUT/target/matched-filter logic and satellite-specific adapters.
+<p align="center">
+  <img src="GA2.jpeg" alt="HyGAS framework schematic" width="700" />
+</p>
+
+HyGAS is a multi-sensor framework for methane enhancement retrieval (ppm·m), uncertainty propagation, scale-aware plume segmentation, and IME/flux estimation from high-resolution imaging spectrometers.
+
+- End-to-end matched-filter pipelines for **PRISMA**, **EnMAP**, and **Tanager** Level-1 radiances.
+- Downstream (segmentation → IME/flux) support for Level-2 enhancement products such as **EMIT** (JPL MF L2B) and **GHGSat** (via notebooks).
+
+## Reference paper (ATBD)
+
+The algorithmic framework implemented here is described in the MDPI *Methane* manuscript:
+
+- **A Multi-Sensor Framework for Methane Detection and Flux Estimation with Scale-Aware Plume Segmentation and Uncertainty Propagation from High-Resolution Spaceborne Imaging Spectrometers**
+- Manuscript ID: `methane-4061227`
+- Local proof PDF: `product_spec_docs/methane-4061227 - send to 2nd proof_VP_AF.pdf` *(not tracked in git; see `.gitignore`)*
+
+Reproducibility aids:
+- `docs/paper-notebook-map.md` maps paper sections/figures/tables to scripts and notebooks.
+- `notebooks/README.md` indexes **all** notebooks (excluding `notebooks/to_rev/`).
 
 ## Repository Structure
 
-- `scripts/main.py` – unified CLI entry point (single/batch, PRISMA/EnMAP).
-- `scripts/core/` – reusable building blocks (I/O helpers, LUT handling, matched filter, targets).
-- `scripts/pipelines/` – orchestration layers per satellite.
-- `scripts/satellites/` – low-level satellite utilities (readers, georeferencing, ZIP helpers).
-- `test_commands.sh` – curated examples for local end-to-end tests.
+- `scripts/main.py` – unified CLI entry point (PRISMA/EnMAP: scene+batch; Tanager: scene).
+- `scripts/pipelines/` – satellite orchestration layers (I/O → MF → σ_RMN → exports).
+- `scripts/core/` – shared LUT/targets/MF/noise/report utilities.
+- `scripts/satellites/` – satellite adapters/readers (PRISMA/EnMAP/Tanager/EMIT).
+- `scripts/plumes_analyzer.py` – IME/flux computation + uncertainty propagation on plume polygons.
+- `notebooks/` – analysis notebooks (paper + development).
+- `docs/` – paper-to-code mapping and documentation.
+- `test_commands.sh` – curated end-to-end command examples (local paths).
 
 ## Requirements & Setup
 
@@ -17,6 +39,7 @@ This repository hosts the refactored CH₄ detection workflows for PRISMA and En
 3. Access to:
    - PRISMA Level-1/Level-2C HE5 or ZIP archives and a DEM (NetCDF).
    - EnMAP VNIR/SWIR GeoTIFFs with matching METADATA.XML.
+   - Tanager radiance HDF5 + surface reflectance HDF5 (for water vapour).
    - Methane LUT (`*.hdf5`) compatible with the matched filter.
 
 Quick start with conda/mamba using the curated environment:
@@ -36,8 +59,10 @@ Confirm GDAL works by importing `osgeo.gdal` inside the environment before runni
 All executions go through:
 
 ```bash
-python scripts/main.py --satellite {prisma|enmap} --mode {scene|batch} [options]
+python scripts/main.py --satellite {prisma|enmap|tanager} --mode {scene|batch} [options]
 ```
+
+Note: `--satellite tanager` currently supports `--mode scene` only.
 
 Global options:
 
@@ -45,7 +70,19 @@ Global options:
 - `--k` – number of clusters for k-means based target estimation.
 - `--log-file` – optional path to capture INFO-level logs in addition to stdout.
 - `--save-rads` – PRISMA only; export the full radiance cube GeoTIFF (disabled by default to avoid multi-GB outputs).
-- `--snr-reference` – path to the column-wise SNR reference `.npz` used for σ_RMN propagation and JPL MF. If omitted, the pipelines fall back to `PRISMA_SNR_REFERENCE` / `ENMAP_SNR_REFERENCE` env vars.
+- `--snr-reference` – path to the column-wise SNR reference `.npz` used for σ_RMN propagation and JPL MF. If omitted, the pipelines fall back to `PRISMA_SNR_REFERENCE` / `ENMAP_SNR_REFERENCE` / `TANAGER_SNR_REFERENCE` env vars.
+
+### Matched-filter variant naming (paper ↔ CLI)
+
+The paper uses CMF/CTMF/CWCMF terminology. In the CLI:
+
+- **CMF** (scene-wide) → `--*-mf-mode srf-column --k 1`
+- **CTMF (k=3)** → `--*-mf-mode srf-column --k 3`
+- **CWCMF** (column-wise) → `--*-mf-mode full-column`
+
+Additional research modes:
+- `advanced` (grouped PCA + shrinkage): implemented in `advanced_matched_filter.py`
+- `jpl` (JPL/EMIT MF adaptation): implemented in `scripts/core/jpl_matched_filter.py`
 
 ## PRISMA Manual
 
@@ -72,6 +109,8 @@ Both `--l1` and `--l2c` accept `.he5` files or ZIP archives. ZIP inputs are unpa
 
 - `srf-column` (default) uses k-means clusters plus column-wise SRF targets (legacy workflow).
 - `full-column` skips clustering and derives per-column mean/covariance so the matched filter fully adapts to each detector column.
+- `advanced` enables the grouped PCA + shrinkage workflow.
+- `jpl` runs the JPL MF adaptation (primarily useful for method comparisons).
 
 ### Batch Mode
 
@@ -114,6 +153,8 @@ python scripts/main.py \
 
 - `srf-column` (default) keeps the **MF columnwise SRF with cluster tuning option**, i.e., target spectra are tiled across columns while μ/Σ come from k-means clusters.
 - `full-column` activates the true column-wise implementation with per-column mean radiance and covariance (no clustering) so both SRF and statistics adapt to each detector column.
+- `advanced` activates the grouped PCA + shrinkage workflow.
+- `jpl` runs the JPL MF adaptation (EMIT-style).
 
 ### Batch Mode
 
@@ -131,14 +172,35 @@ python scripts/main.py \
 
 Each scene directory inside `--root-directory` must contain the VNIR/SWIR GeoTIFFs and the METADATA.XML file. Outputs are written to `<scene>_output` siblings, mirroring the legacy workflow.
 
+## Tanager Manual
+
+Tanager is supported in `--mode scene` only (batch mode is not implemented in `scripts/main.py`).
+
+```bash
+python scripts/main.py \
+  --satellite tanager --mode scene \
+  --tanager-rad /path/to/basic_radiance.h5 \
+  --tanager-sr /path/to/surface_reflectance.h5 \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --output /path/to/output_dir \
+  --min-wavelength 2100 \
+  --max-wavelength 2450 \
+  --k 1 \
+  --tanager-mf-mode full-column \
+  --log-file logs/tanager_scene.log
+```
+
 ## Outputs & Reporting
 
 Every run produces a set of GeoTIFFs plus a text report under the chosen output directory:
 
-- `*_MF.tif` – matched-filter response.
-- `*_concentration.tif` – derived methane concentration map.
-- `*_rgb.tif` – quick-look RGB composite.
-- `*_classified.tif` – thresholded/classified result.
+- `*_MF*.tif` – methane enhancement / matched-filter output (ΔX in ppm·m).
+- `*_MF_uncertainty.tif` – propagated instrument-noise uncertainty (σ_RMN).
+- `*_MF_sensitivity.tif` – sensitivity map (only for `--*-mf-mode jpl`).
+- `*_RGB.tif` or `*_rgb.tif` – quick-look RGB composite (sensor-specific naming).
+- `*_CL.tif` or `*_classified.tif` – classified result (sensor-specific naming).
 - `processing_report.txt` – provenance summary (inputs, parameters, spectral window, statistics).
 
 PRISMA batch runs also emit `directory_process_report_<timestamp>.txt` summarizing successes/failures per scene.
@@ -158,15 +220,28 @@ PRISMA batch runs also emit `directory_process_report_<timestamp>.txt` summarizi
 
 The legacy `scripts/PRISMA/prisma_MF.py` and `scripts/EnMAP/enmap_MF.py` remain callable for backwards compatibility but simply forward into the new CLI. Prefer `scripts/main.py` for all new runs.
 
-## Standalone Smile/SNR Utilities
+## Scripts (diagnostics & utilities)
 
-Beyond the end-to-end pipelines, the repo now ships lightweight analysis scripts useful for quick instrument diagnostics:
+Beyond the end-to-end pipelines, the repo ships lightweight analysis scripts used by the paper notebooks and for development/validation:
 
-- `scripts/enmap_smile.py` – EnMAP-only explorer that reads VNIR/SWIR cubes from GeoTIFF + METADATA and produces mean spectra alongside Δλ and CW/FWHM diagnostics for user-selected local bands (radiance shown in µW·cm⁻²·sr⁻¹·nm⁻¹ to match the LUT convention).
-- `scripts/prisma_smile.py` – PRISMA-focused counterpart that pulls CW/FWHM matrices straight from the Level-1 HE5 (or ZIP) archive and renders the same suite of plots for VNIR/SWIR selections.
-- `scripts/SNR_enmap.py` – homogeneous-area SNR estimator for EnMAP; shares the methodology described in the matched-filter paper (auto mask, diff/high-pass sigma, optional per-column aggregation) and reports radiance in µW·cm⁻²·sr⁻¹·nm⁻¹.
-- `scripts/SNR_prisma.py` – PRISMA-specific SNR estimator that loads radiance cubes via `prisma_utils` (native µW·cm⁻²·sr⁻¹·nm⁻¹ units), handles `.zip` inputs seamlessly, and mirrors the plotting/return structure of the EnMAP variant.
-Run them from the repo root so the `scripts.*` imports resolve, e.g.:
+- Pipelines:
+  - `scripts/main.py` – main entrypoint (PRISMA/EnMAP batch + scene; Tanager scene).
+  - `scripts/run_enmap_case_studies.py`, `scripts/run_prisma_case_studies.py`, `scripts/run_tanager_case_studies.py` – run predefined case studies across multiple MF modes.
+- Radiometry (SNR / smile / striping):
+  - `scripts/snr_experiment.py` – consolidated A–H SNR experiment CLI (PRISMA/EnMAP/Tanager/EMIT radiance inputs).
+  - `scripts/enmap_smile.py`, `scripts/prisma_smile.py` – spectral smile diagnostics (CW/FWHM, Δλ).
+  - `scripts/diagnostics/striping.py` – striping metrics + light destriping primitives (used by SNR/striping notebooks).
+  - `scripts/SNR_enmap.py`, `scripts/SNR_prisma.py` – standalone SNR estimators (legacy but still useful for quick plotting).
+  - `scripts/SNR_tanager_reference.py` – generates a `ColumnwiseSNRReference` (`.npz`) for Tanager.
+- Plume products (IME / flux):
+  - `scripts/plumes_analyzer.py` – IME and flux estimation on plume polygons + uncertainty propagation.
+- Data inspection / helpers:
+  - `scripts/inspect_prisma_hdf.py` – explore PRISMA HE5/ZIP structure from the terminal.
+  - `scripts/inspect_tanager_hdf.py` – explore Tanager HDF5/ZIP structure from the terminal.
+  - `scripts/tanager_quicklook.py` – build a quick RGB preview from Tanager TOA radiance.
+  - `scripts/ghgsat_catalog_to_geojson.py` – convert a GHGSat catalog CSV export to GeoJSON (points + buffers).
+
+Run utilities from the repo root so imports resolve, e.g.:
 
 ```bash
 PYTHONPATH=. python scripts/enmap_smile.py --help  # edit the __main__ block for your scene paths
@@ -175,22 +250,27 @@ PYTHONPATH=. python scripts/SNR_prisma.py
 
 The four plotting-oriented utilities share the same 3×2 layout and rely on the existing `prisma_utils.py` / `enmap_utils.py` readers, so any improvements to the satellite helpers automatically benefit both the operational pipelines and these diagnostics.
 
-## Notebook Guide
+## Notebooks (paper)
 
-All notebooks live under `notebooks/` and are wired to the repository code via `PYTHONPATH=.`, so run them from the repo root (or adjust the first cell accordingly).
+Only the notebooks used for the `methane-4061227` paper are listed here. For a complete notebook index (excluding ongoing work in `notebooks/to_rev/`), see `notebooks/README.md`.
 
-- `matched_filter_demo_enmap.ipynb` – runs the full EnMAP CH₄ pipeline on the bundled test scene. **Inputs:** VNIR/SWIR GeoTIFFs, METADATA.XML, CH₄ LUT, DEM/SNR references declared in the config cell. **Outputs:** RGB composite plus matched-filter concentration (`*_MF.tif`) and propagated σ₍RMN₎ rasters written to `notebooks/outputs/pipeline_demo/enmap/` and displayed inline.
-- `matched_filter_demo_prisma.ipynb` – same workflow for PRISMA L1/L2C data (ZIP or HE5) alongside DEM/LUT/SNR assets. **Outputs:** RGB, concentration, and σ₍RMN₎ rasters under `notebooks/outputs/pipeline_demo/prisma/`.
-- `SNR_experiments_enmap.ipynb` – orchestrates the eight-case SNR CLI runs for EnMAP. **Inputs:** scene configurations (paths/ROIs/band windows/case lists/destriping flags). **Outputs:** CLI artefacts such as `striping_diagnostics.png`, `pca_summary_*.png`, `snr_cases_*.csv|png`, and logs under `notebooks/outputs/enmap/<scene_id>/` plus inline listings.
-- `SNR_experiments_prisma.ipynb` – identical orchestration for PRISMA L1/L2C scenes with the same output family stored in `notebooks/outputs/prisma/<scene_id>/`.
-- `SNR_experiments_tanager.ipynb` – runs the A–H SNR pipeline for Tanager radiance HDF5 (ROI-aware; unit labels per Tanager spec).
-- `diagnostics_uncertainty_enmap.ipynb` – documents how σ₍RMN₎ is produced for EnMAP by walking through band selection, k-means background stats, LUT target synthesis, SNR-reference mapping, and uncertainty propagation. **Inputs:** EnMAP scene folder, DEM, LUT, SNR reference. **Outputs:** console summaries plus an inline σ₍RMN₎ map.
-- `diagnostics_uncertainty_prisma.ipynb` – mirrors the above steps for PRISMA L1/L2C inputs, yielding the propagated σ₍RMN₎ raster preview.
-- `uncertainty_analysis_enmap.ipynb` – consumes finished EnMAP matched-filter concentration/uncertainty rasters (and optional plume polygons) to compute σ_tot, representative σ₍RMN₎, derived σ_Surf, and plume-level total uncertainty. **Outputs:** diagnostic figures and a JSON metrics report saved to `notebooks/outputs/uncertainty/enmap/`.
-- `uncertainty_analysis_prisma.ipynb` – same clutter-versus-instrument breakdown for PRISMA products with metrics saved in `notebooks/outputs/uncertainty/prisma/`.
-- `prisma_enmap_comparison.ipynb` – cross-sensor analysis that loads the reference PRISMA/EnMAP cubes plus precomputed SNR cases to compare SNR (case D), spectral smile, and striping metrics. **Outputs:** comparison tables/plots rendered inline and saved next to the configured output directories.
-- `test_notebook.ipynb` – minimal placeholder to verify the notebook environment; no external inputs/outputs.
-- `SNR_experiments_tanager.ipynb` – runs the A–H SNR experiment pipeline for Tanager radiance HDF5 (same CLI wrapper used for PRISMA/EnMAP).
+- `notebooks/ch4_radiance_windows.ipynb`
+- `notebooks/diagnostics_uncertainty_enmap.ipynb`
+- `notebooks/diagnostics_uncertainty_prisma.ipynb`
+- `notebooks/plume_analysis_enmap.ipynb`
+- `notebooks/SNR_experiments_enmap.ipynb`
+- `notebooks/SNR_experiments_prisma.ipynb`
+- `notebooks/SNR_experiments_tanager.ipynb`
+- `notebooks/tanager_prisma_enmap_SNR_comparison.ipynb`
+- `notebooks/striping_sweep_diagnostics_cal_scenes_triple.ipynb`
+- `notebooks/BA_plume_detection_scaled.ipynb`
+- `notebooks/BA_plume_analysis_enmap_ghgsat_emit.ipynb`
+- `notebooks/Turkmenistan_plume_detection_scaled.ipynb`
+- `notebooks/Turkmenistan_plume_analysis_enmap_prisma_ghgsat.ipynb`
+- `notebooks/Pakistan_plume_detection_scaled.ipynb`
+- `notebooks/Pakistan_plume_analysis_emit_ghgsat.ipynb`
+- `notebooks/BA2_plume_detection_single_MF.ipynb`
+- `notebooks/BA2_plume_analysis_single_MF.ipynb`
 
 ## PRISMA HDF Exploration
 

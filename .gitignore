@@ -29,7 +29,9 @@ htmlcov/
 diff.txt
 
 /output
+/outputs
 
+/notebooks/to_rev
 
 *.tiff
 *.zip
