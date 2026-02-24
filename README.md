@@ -1,7 +1,7 @@
 # HyGAS (Hyperspectral Gas Analysis Suite)
 
 <p align="center">
-  <img src="GA2.jpeg" alt="HyGAS framework schematic" width="700" />
+  <img src="GA_repo.jpeg" alt="HyGAS framework schematic" width="700" />
 </p>
 
 HyGAS is a multi-sensor framework for methane enhancement retrieval (ppm·m), uncertainty propagation, scale-aware plume segmentation, and IME/flux estimation from high-resolution imaging spectrometers.
@@ -37,10 +37,11 @@ Reproducibility aids:
 1. Python ≥ 3.11 with GDAL bindings installed (compiled with the same Python).
 2. Project dependencies from `requirements-pip.txt`.
 3. Access to:
-   - PRISMA Level-1/Level-2C HE5 or ZIP archives and a DEM (NetCDF).
+   - PRISMA Level-1/Level-2C HE5 or ZIP archives.
    - EnMAP VNIR/SWIR GeoTIFFs with matching METADATA.XML.
    - Tanager radiance HDF5 + surface reflectance HDF5 (for water vapour).
-   - Methane LUT (`*.hdf5`) compatible with the matched filter.
+   - Methane LUT: download `dataset_ch4_full.hdf5` from the University of Utah HIVE dataset ([landing page](https://hive.utah.edu/concern/datasets/9w0323039), [file set](https://hive.utah.edu/concern/parent/9w0323039/file_sets/ht24wj452)). Mirror: [LUT CH4](https://drive.google.com/file/d/196adGp_XCcTXAk3SRjiOnBJxUhDANNvn/view?usp=sharing). Please cite: Markus D. Foote et al., “Impact of Scene-Specific Enhancement Spectra on Matched Filter GreenhouseGas Retrievals from Imaging Spectroscopy,” *Remote Sensing of Environment*.
+   - DEM (NetCDF): required for PRISMA and Tanager (used to derive mean ground elevation for LUT interpolation; expects variables `lat`, `lon`, `elev` in meters). Source: [SRTM30 Global 1 km DEM v1.1](https://catalog.data.gov/dataset/srtm30-global-1-km-digital-elevation-model-dem-version-11-land-surface). Mirror: [DEM](https://drive.google.com/file/d/10e1VtibryVxcHT4-Gb0ryhyk17JCF04f/view?usp=sharing).
 
 Quick start with conda/mamba using the curated environment:
 
@@ -213,7 +214,7 @@ PRISMA batch runs also emit `directory_process_report_<timestamp>.txt` summarizi
 
 ## Tips & Troubleshooting
 
-- DEM files are mandatory for PRISMA but ignored for EnMAP.
+- DEM files are mandatory for PRISMA and Tanager but ignored for EnMAP.
 - When processing ZIP archives, ensure each contains exactly one `.he5` file; otherwise the CLI aborts with a clear error.
 - If you see `Missing required ... arguments` revisit the per-mode required options listed above.
 - Spectral window and `k` parameters are persisted in the processing report—helpful when comparing runs.
