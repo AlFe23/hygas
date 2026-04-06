@@ -9,17 +9,17 @@ HyGAS is a multi-sensor framework for methane enhancement retrieval (ppm·m), un
 - End-to-end matched-filter pipelines for **PRISMA**, **EnMAP**, and **Tanager** Level-1 radiances.
 - Downstream (segmentation → IME/flux) support for Level-2 enhancement products such as **EMIT** (JPL MF L2B) and **GHGSat** (via notebooks).
 
+
 ## Reference paper (ATBD)
 
-The algorithmic framework implemented here is described in the MDPI *Methane* manuscript:
+The algorithmic framework implemented here is described in:
 
-- **A Multi-Sensor Framework for Methane Detection and Flux Estimation with Scale-Aware Plume Segmentation and Uncertainty Propagation from High-Resolution Spaceborne Imaging Spectrometers**
-- Manuscript ID: `methane-4061227`
-- Local proof PDF: `product_spec_docs/methane-4061227 - send to 2nd proof_VP_AF.pdf` *(not tracked in git; see `.gitignore`)*
+Ferrari, A.; Pampanoni, V.; Laneve, G.; Carvajal Tellez, R.A.; Saquella, S.
+*A Multi-Sensor Framework for Methane Detection and Flux Estimation with Scale-Aware Plume Segmentation and Uncertainty Propagation from High-Resolution Spaceborne Imaging Spectrometers*.
+**Methane** 2026, 5(1), 10.
+DOI: [10.3390/methane5010010](https://doi.org/10.3390/methane5010010)
+Publisher page: <https://www.mdpi.com/2674-0389/5/1/10>
 
-Reproducibility aids:
-- `docs/paper-notebook-map.md` maps paper sections/figures/tables to scripts and notebooks.
-- `notebooks/README.md` indexes **all** notebooks (excluding `notebooks/to_rev/`).
 
 ## Repository Structure
 
