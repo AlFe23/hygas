@@ -1,7 +1,7 @@
 # HyGAS (Hyperspectral Gas Analysis Suite)
 
 <p align="center">
-  <img src="GA_repo.jpeg" alt="HyGAS framework schematic" width="700" />
+  <img src="GA_repo_fixed.JPG" alt="HyGAS framework schematic" width="700" />
 </p>
 
 HyGAS is a multi-sensor framework for methane enhancement retrieval (ppm·m), uncertainty propagation, scale-aware plume segmentation, and IME/flux estimation from high-resolution imaging spectrometers.
