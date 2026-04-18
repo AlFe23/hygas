@@ -231,10 +231,12 @@ PY
 
 python scripts/main.py \
   --satellite prisma --mode batch \
-  --root-directory "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Articolo_confronto_sensori/ready_to_process" \
+  --root-directory "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/PETROBRAS_call/IMAGES/PRISMA/to_process" \
   --dem "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/DEM_1Km/srtm30plus_v11_land.nc" \
   --lut "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/LUTs/CH4_lut.hdf5" \
   --snr-reference "/mnt/d/Lavoro/Assegno_Ricerca_Sapienza/CLEAR_UP/CH4_detection/Matched_filter_approach/hygas/reference_snr/prisma/20200401085313/snr_reference_columnwise.npz" \
   --min-wavelength 2100 --max-wavelength 2450 --k 1 \
   --prisma-mf-mode full-column \
-  --log-file logs/prisma_batch_articolo.log
+  --log-file logs/prisma_offshore_roger_petrobras_batch.log
+
+
