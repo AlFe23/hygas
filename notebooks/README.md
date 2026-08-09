@@ -17,6 +17,7 @@ Radiometric comparison (SNR / striping):
 - `notebooks/SNR_experiments_prisma.ipynb`: runs the A–H SNR experiment CLI for PRISMA calibration scenes.
 - `notebooks/SNR_experiments_tanager.ipynb`: runs the A–H SNR experiment CLI for Tanager calibration scenes.
 - `notebooks/tanager_prisma_enmap_SNR_comparison.ipynb`: cross-sensor SNR comparisons (brightness-normalised).
+- `notebooks/calibration_scene_rgb_quicklooks.ipynb`: exports presentation-ready RGB quicklooks for the EnMAP, PRISMA, and Tanager-1 SNR calibration scenes.
 - `notebooks/striping_sweep_diagnostics_cal_scenes_triple.ipynb`: PRISMA vs EnMAP vs Tanager striping sweep; exports paper-ready figures to `notebooks/outputs/paper_figs/`.
 - `notebooks/diagnostics_uncertainty_enmap.ipynb`: matched-filter + σ_RMN derivation walkthrough for EnMAP.
 - `notebooks/diagnostics_uncertainty_prisma.ipynb`: matched-filter + σ_RMN derivation walkthrough for PRISMA.

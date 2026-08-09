@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Unified entry point for PRISMA, EnMAP, and Tanager methane matched-filter processing.
-It wraps the satellite-specific pipelines built on top of the shared core modules.
-"""
+"""Unified entry point for PRISMA, EnMAP, and Tanager matched-filter processing."""
 
 import argparse
 import logging
@@ -20,7 +17,7 @@ from scripts.satellites import prisma_utils, tanager_utils  # type: ignore
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Methane matched-filter processing for PRISMA, EnMAP, and Tanager scenes."
+        description="Greenhouse-gas matched-filter processing for PRISMA, EnMAP, and Tanager scenes."
     )
     parser.add_argument(
         "--satellite",
@@ -60,8 +57,16 @@ def build_parser():
     parser.add_argument("--output", help="Output directory for a single scene.")
     parser.add_argument("--output-root", help="Root directory for batch outputs.")
     parser.add_argument("--root-directory", help="Input root directory for batch mode.")
-    parser.add_argument("--min-wavelength", type=float, default=2100, help="Minimum wavelength (nm).")
-    parser.add_argument("--max-wavelength", type=float, default=2450, help="Maximum wavelength (nm).")
+    parser.add_argument(
+        "--min-wavelength",
+        type=float,
+        help="Minimum wavelength (nm). Defaults to 2100 for CH4 and 1900 for Tanager CO2.",
+    )
+    parser.add_argument(
+        "--max-wavelength",
+        type=float,
+        help="Maximum wavelength (nm). Defaults to 2450 for CH4 and 2100 for Tanager CO2.",
+    )
     parser.add_argument(
         "--prisma-mf-mode",
         choices=["srf-column", "full-column", "advanced", "jpl"],
@@ -103,6 +108,12 @@ def build_parser():
         default="srf-column",
         help="Tanager matched-filter variant (single CW/FWHM grid; includes JPL MF adaptation).",
     )
+    parser.add_argument(
+        "--gas",
+        choices=["ch4", "co2"],
+        default="ch4",
+        help="Target gas. CO2 is currently implemented for Tanager scene processing only.",
+    )
 
     return parser
 
@@ -125,6 +136,12 @@ def main(argv=None):
     logging.getLogger(__name__).info(
         "Starting %s %s run", args.satellite.upper(), args.mode.upper()
     )
+
+    if args.satellite != "tanager" and args.gas != "ch4":
+        parser.error("CO2 processing is currently implemented for Tanager scene mode only.")
+
+    methane_min_wavelength = 2100.0 if args.min_wavelength is None else args.min_wavelength
+    methane_max_wavelength = 2450.0 if args.max_wavelength is None else args.max_wavelength
 
     if args.satellite == "prisma":
         if args.mode == "scene":
@@ -168,8 +185,8 @@ def main(argv=None):
                     dem_file=args.dem,
                     lut_file=args.lut,
                     output_dir=output_dir,
-                    min_wavelength=args.min_wavelength,
-                    max_wavelength=args.max_wavelength,
+                    min_wavelength=methane_min_wavelength,
+                    max_wavelength=methane_max_wavelength,
                     k=args.k,
                     mf_mode=args.prisma_mf_mode,
                     save_rads=args.save_rads,
@@ -193,8 +210,8 @@ def main(argv=None):
                 root_dir=args.root_directory,
                 dem_file=args.dem,
                 lut_file=args.lut,
-                min_wavelength=args.min_wavelength,
-                max_wavelength=args.max_wavelength,
+                min_wavelength=methane_min_wavelength,
+                max_wavelength=methane_max_wavelength,
                 k=args.k,
                 mf_mode=args.prisma_mf_mode,
                 output_root_dir=output_root,
@@ -219,8 +236,8 @@ def main(argv=None):
                 lut_file=args.lut,
                 output_dir=output_dir,
                 k=args.k,
-                min_wavelength=args.min_wavelength,
-                max_wavelength=args.max_wavelength,
+                min_wavelength=methane_min_wavelength,
+                max_wavelength=methane_max_wavelength,
                 mf_mode=args.enmap_mf_mode,
                 snr_reference_path=args.snr_reference,
             )
@@ -231,8 +248,8 @@ def main(argv=None):
                 root_dir=args.root_directory,
                 lut_file=args.lut,
                 k=args.k,
-                min_wavelength=args.min_wavelength,
-                max_wavelength=args.max_wavelength,
+                min_wavelength=methane_min_wavelength,
+                max_wavelength=methane_max_wavelength,
                 mf_mode=args.enmap_mf_mode,
                 snr_reference_path=args.snr_reference,
             )
@@ -270,7 +287,7 @@ def main(argv=None):
             output_dir = str(scene_dir.parent / f"{scene_dir.name}_output")
 
         try:
-            tanager_pipeline.ch4_detection_tanager(
+            tanager_pipeline.detection_tanager(
                 radiance_file=rad_file,
                 sr_file=sr_file,
                 dem_file=args.dem,
@@ -281,6 +298,7 @@ def main(argv=None):
                 max_wavelength=args.max_wavelength,
                 snr_reference_path=args.snr_reference,
                 mf_mode=args.tanager_mf_mode,
+                gas=args.gas,
             )
         finally:
             for extracted_file in temp_extractions:

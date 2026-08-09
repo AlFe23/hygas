@@ -10,6 +10,25 @@ import h5py
 import scipy.ndimage
 
 
+GAS_CONCENTRATIONS = {
+    "ch4": (0.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0, 32000.0, 64000.0),
+    "co2": (0.0, 20000.0, 40000.0, 80000.0, 160000.0, 320000.0, 640000.0, 1280000.0),
+}
+
+
+def normalize_gas(gas: str) -> str:
+    """Return a supported lower-case gas identifier."""
+    normalized = gas.lower().strip()
+    if normalized not in GAS_CONCENTRATIONS:
+        raise ValueError(f"Unsupported gas: {gas}. Expected one of {sorted(GAS_CONCENTRATIONS)}.")
+    return normalized
+
+
+def default_concentrations(gas: str) -> np.ndarray:
+    """Return the MODTRAN enhancement levels available for a supported gas LUT."""
+    return np.asarray(GAS_CONCENTRATIONS[normalize_gas(gas)], dtype=float)
+
+
 def mean_elev_from_dem(dem_file: str, bbox: tuple) -> float:
     """
     Return mean ground altitude in km over bbox. Falls back to 0.0 km over water/NoData.
@@ -125,17 +144,18 @@ def get_5deg_methane_index(methane_value):
 
 
 @np.vectorize
-def get_carbon_dioxide_index(coo_value):
-    check_param(coo_value, 0, 1280000, "Carbon Dioxode Concentration")
-    if coo_value <= 0:
+def get_carbon_dioxide_index(co2_value):
+    check_param(co2_value, 0, 1280000, "Carbon Dioxide Concentration")
+    if co2_value <= 0:
         return 0
-    elif coo_value < 20000:
-        return coo_value / 20000
-    return np.log2(coo_value / 10000)
+    elif co2_value < 20000:
+        return co2_value / 20000
+    return np.log2(co2_value / 10000)
 
 
 def get_5deg_lookup_index(zenith=0, sensor=120, ground=0, water=0, conc=0, gas="ch4"):
-    if "ch4" in gas:
+    gas = normalize_gas(gas)
+    if gas == "ch4":
         idx = np.asarray(
             [
                 [get_5deg_zenith_angle_index(zenith)],
@@ -145,7 +165,7 @@ def get_5deg_lookup_index(zenith=0, sensor=120, ground=0, water=0, conc=0, gas="
                 [get_5deg_methane_index(conc)],
             ]
         )
-    elif "co2" in gas:
+    elif gas == "co2":
         idx = np.asarray(
             [
                 [get_5deg_zenith_angle_index(zenith)],
@@ -155,8 +175,6 @@ def get_5deg_lookup_index(zenith=0, sensor=120, ground=0, water=0, conc=0, gas="
                 [get_carbon_dioxide_index(conc)],
             ]
         )
-    else:
-        raise ValueError("Unknown gas provided.")
     return idx
 
 
@@ -190,17 +208,52 @@ def spline_5deg_lookup(grid_data, zenith=0, sensor=120, ground=0, water=0, conc=
     return lookup.squeeze()
 
 
-def load_ch4_dataset(lut_file_path):
-    # Ensure the function uses the passed file path instead of a hardcoded one
+def load_lut_dataset(lut_file_path, gas: str):
+    """Open a gas-specific MODTRAN LUT while preserving its on-disk lazy arrays."""
+    gas = normalize_gas(gas)
     datafile = h5py.File(lut_file_path, "r", rdcc_nbytes=4194304)
-    return datafile["modtran_data"], datafile["modtran_param"], datafile["wave"], "ch4"
+    required = ("modtran_data", "modtran_param", "wave")
+    missing = [key for key in required if key not in datafile]
+    if missing:
+        datafile.close()
+        raise KeyError(f"LUT is missing required datasets: {', '.join(missing)}")
+
+    grid = datafile["modtran_data"]
+    wave = datafile["wave"]
+    if grid.ndim != 6 or wave.ndim != 1 or grid.shape[-1] != wave.shape[0]:
+        datafile.close()
+        raise ValueError("Unexpected MODTRAN LUT dimensions.")
+    return grid, datafile["modtran_param"], wave, gas
 
 
-def generate_library(gas_concentration_vals, lut_file, zenith=0, sensor=120, ground=0, water=0, order=1, dataset_fcn=load_ch4_dataset):
-    # Use the passed `dataset_fcn` function, allowing for flexibility in data loading.
+def load_ch4_dataset(lut_file_path):
+    """Backward-compatible methane LUT loader."""
+    return load_lut_dataset(lut_file_path, "ch4")
+
+
+def load_co2_dataset(lut_file_path):
+    """Carbon-dioxide LUT loader using the CO2 concentration-axis mapping."""
+    return load_lut_dataset(lut_file_path, "co2")
+
+
+def generate_library(
+    gas_concentration_vals,
+    lut_file,
+    zenith=0,
+    sensor=120,
+    ground=0,
+    water=0,
+    order=1,
+    dataset_fcn=None,
+    gas="ch4",
+):
+    """Interpolate a MODTRAN radiance library for methane or carbon dioxide."""
+    gas = normalize_gas(gas)
+    if dataset_fcn is None:
+        dataset_fcn = load_co2_dataset if gas == "co2" else load_ch4_dataset
     grid, params, wave, gas = dataset_fcn(lut_file)
+    gas = normalize_gas(gas)
     rads = np.empty((len(gas_concentration_vals), grid.shape[-1]))
     for i, ppmm in enumerate(gas_concentration_vals):
         rads[i, :] = spline_5deg_lookup(grid, zenith=zenith, sensor=sensor, ground=ground, water=water, conc=ppmm, gas=gas, order=order)
     return rads, np.array(wave)
-

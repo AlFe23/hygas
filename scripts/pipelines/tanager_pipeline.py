@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Tanager processing pipeline mirroring PRISMA/EnMAP flows. Loads TOA radiance
-and companion surface reflectance (for water vapour), synthesises CH4 targets
+and companion surface reflectance (for water vapour), synthesises gas-specific targets
 from the LUT, runs the matched filter, and propagates σ_RMN using the Tanager
 columnwise SNR reference.
 """
@@ -20,6 +20,26 @@ from scripts.satellites import tanager_utils  # type: ignore
 
 logger = logging.getLogger(__name__)
 
+GAS_DEFAULT_WINDOWS = {
+    "ch4": (2100.0, 2450.0),
+    "co2": (1900.0, 2100.0),
+}
+
+
+def resolve_gas_settings(
+    gas: str,
+    min_wavelength: float | None,
+    max_wavelength: float | None,
+) -> tuple[str, float, float, np.ndarray]:
+    """Resolve gas defaults while allowing an explicit spectral-window override."""
+    gas = lut.normalize_gas(gas)
+    default_min, default_max = GAS_DEFAULT_WINDOWS[gas]
+    min_wavelength = default_min if min_wavelength is None else float(min_wavelength)
+    max_wavelength = default_max if max_wavelength is None else float(max_wavelength)
+    if min_wavelength >= max_wavelength:
+        raise ValueError("min_wavelength must be lower than max_wavelength.")
+    return gas, min_wavelength, max_wavelength, lut.default_concentrations(gas)
+
 
 def _scene_stats(rad_path: str, sr_path: str) -> tuple[float, float]:
     """Return (SZA, WV) as single scalar values (median)."""
@@ -36,22 +56,27 @@ def _scene_stats(rad_path: str, sr_path: str) -> tuple[float, float]:
     return sza_val, wv_val
 
 
-def ch4_detection_tanager(
+def detection_tanager(
     radiance_file: str,
     sr_file: str,
     dem_file: str,
     lut_file: str,
     output_dir: str,
     k: int = 1,
-    min_wavelength: float = 2100.0,
-    max_wavelength: float = 2450.0,
+    min_wavelength: float | None = None,
+    max_wavelength: float | None = None,
     snr_reference_path: str | None = None,
     mf_mode: str = "srf-column",
     advanced_mf_options: dict | None = None,
     output_name_suffix: str | None = None,
+    gas: str = "ch4",
 ):
     os.makedirs(output_dir, exist_ok=True)
+    gas, min_wavelength, max_wavelength, concentrations = resolve_gas_settings(
+        gas, min_wavelength, max_wavelength
+    )
     logger.info("Tanager scene: %s", radiance_file)
+    logger.info("Gas: %s; spectral window: %.1f-%.1f nm", gas.upper(), min_wavelength, max_wavelength)
 
     # Scene stats
     sza_deg, wv_gcm2 = _scene_stats(radiance_file, sr_file)
@@ -80,12 +105,18 @@ def ch4_detection_tanager(
     cw_sel = mean_cw[band_indices]
     fwhm_sel = mean_fwhm[band_indices]
 
-    concentrations = [0.0, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
     ground_km = lut.normalize_ground_km(lut.mean_elev_from_dem(dem_file, tanager_utils.bounding_box(cube)))
     water_gcm2 = lut.normalize_wv_gcm2(wv_gcm2)
 
     simRads_array, simWave_array = lut.generate_library(
-        concentrations, lut_file, zenith=sza_deg, sensor=120, ground=ground_km, water=water_gcm2, order=1
+        concentrations,
+        lut_file,
+        zenith=sza_deg,
+        sensor=120,
+        ground=ground_km,
+        water=water_gcm2,
+        order=1,
+        gas=gas,
     )
     logger.info("Simulated radiance spectra generated for %d concentration levels", len(concentrations))
 
@@ -176,6 +207,8 @@ def ch4_detection_tanager(
     )
 
     basename = Path(radiance_file).stem
+    if gas != "ch4" and output_name_suffix is None:
+        output_name_suffix = gas
     if output_name_suffix:
         basename = f"{basename}_{output_name_suffix}"
     conc_path = os.path.join(output_dir, f"{basename}_MF.tif")
@@ -191,3 +224,8 @@ def ch4_detection_tanager(
 
     logger.info("GeoTIFF exports completed for Tanager scene %s", basename)
 
+
+def ch4_detection_tanager(*args, **kwargs):
+    """Backward-compatible entry point for existing methane callers."""
+    kwargs.setdefault("gas", "ch4")
+    return detection_tanager(*args, **kwargs)

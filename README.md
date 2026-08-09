@@ -41,6 +41,7 @@ Publisher page: <https://www.mdpi.com/2674-0389/5/1/10>
    - EnMAP VNIR/SWIR GeoTIFFs with matching METADATA.XML.
    - Tanager radiance HDF5 + surface reflectance HDF5 (for water vapour).
    - Methane LUT: download `dataset_ch4_full.hdf5` from the University of Utah HIVE dataset ([landing page](https://hive.utah.edu/concern/datasets/9w0323039), [file set](https://hive.utah.edu/concern/parent/9w0323039/file_sets/ht24wj452)). Mirror: [LUT CH4](https://drive.google.com/file/d/196adGp_XCcTXAk3SRjiOnBJxUhDANNvn/view?usp=sharing). Please cite: Markus D. Foote et al., “Impact of Scene-Specific Enhancement Spectra on Matched Filter GreenhouseGas Retrievals from Imaging Spectroscopy,” *Remote Sensing of Environment*.
+   - CO2 LUT (`dataset_co2_full.hdf5`) for Tanager CO2 processing. The LUT must have the same `modtran_data`, `modtran_param`, and `wave` structure as the methane LUT.
    - DEM (NetCDF): required for PRISMA and Tanager (used to derive mean ground elevation for LUT interpolation; expects variables `lat`, `lon`, `elev` in meters). Source: [SRTM30 Global 1 km DEM v1.1](https://catalog.data.gov/dataset/srtm30-global-1-km-digital-elevation-model-dem-version-11-land-surface). Mirror: [DEM](https://drive.google.com/file/d/10e1VtibryVxcHT4-Gb0ryhyk17JCF04f/view?usp=sharing).
 
 Quick start with conda/mamba using the curated environment:
@@ -72,6 +73,7 @@ Global options:
 - `--log-file` – optional path to capture INFO-level logs in addition to stdout.
 - `--save-rads` – PRISMA only; export the full radiance cube GeoTIFF (disabled by default to avoid multi-GB outputs).
 - `--snr-reference` – path to the column-wise SNR reference `.npz` used for σ_RMN propagation and JPL MF. If omitted, the pipelines fall back to `PRISMA_SNR_REFERENCE` / `ENMAP_SNR_REFERENCE` / `TANAGER_SNR_REFERENCE` env vars.
+- `--gas {ch4,co2}` – target gas. `co2` is currently available only for a Tanager scene and automatically uses the 1900–2100 nm window unless overridden.
 
 ### Matched-filter variant naming (paper ↔ CLI)
 
@@ -177,6 +179,8 @@ Each scene directory inside `--root-directory` must contain the VNIR/SWIR GeoTIF
 
 Tanager is supported in `--mode scene` only (batch mode is not implemented in `scripts/main.py`).
 
+The default target gas is methane. The default methane window is 2100–2450 nm; the CO2 workflow uses a separate CO2 LUT and defaults to 1900–2100 nm.
+
 ```bash
 python scripts/main.py \
   --satellite tanager --mode scene \
@@ -193,12 +197,42 @@ python scripts/main.py \
   --log-file logs/tanager_scene.log
 ```
 
+CO2 Tanager scene:
+
+```bash
+python scripts/main.py \
+  --satellite tanager --mode scene --gas co2 \
+  --tanager-rad /path/to/basic_radiance.h5 \
+  --tanager-sr /path/to/surface_reflectance.h5 \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_co2_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --output /path/to/output_dir \
+  --tanager-mf-mode full-column
+```
+
+### CO2 Functionality And Test Scene
+
+CO2 processing is currently implemented for Tanager single scenes only. With `--gas co2`, HyGAS loads the CO2 MODTRAN LUT, synthesizes a scene-specific target spectrum from median solar zenith angle, water vapour, and DEM elevation, and runs the selected matched-filter variant. The default CO2 window is 1900–2100 nm; users may override it with `--min-wavelength` and `--max-wavelength`.
+
+The workflow produces a CO2 matched-filter enhancement map, the propagated instrument-noise uncertainty (`sigma_RMN`), a technical classification map, and an RGB quicklook. It does not yet include plume segmentation, background-noise quantification, flux estimation, or total uncertainty (`sigma_tot`). Consequently, the output is suitable for algorithmic testing and subsequent validation, but should not be considered a quantitatively validated CO2 plume product without an independent reference.
+
+The implementation was tested end-to-end with the following Planet Tanager-1 Basic products:
+
+- Scene ID: `20250219_053251_31_4001`.
+- Acquisition: `2025-02-19 05:32:51.310 UTC`.
+- Area: Kusmunda/Korba, Chhattisgarh, India.
+- Inputs: companion Basic radiance and surface-reflectance HDF5 products.
+- Configuration: `--gas co2 --tanager-mf-mode full-column`, 40 selected bands in the 1900–2100 nm interval, CO2 LUT `dataset_co2_full.hdf5`, and the Tanager column-wise SNR reference.
+
+This test verified that the real scene, LUT, target synthesis, SNR propagation, and GeoTIFF export execute successfully. It was not used to validate plume detection performance or retrieved CO2 enhancement magnitude.
+
 ## Outputs & Reporting
 
 Every run produces a set of GeoTIFFs plus a text report under the chosen output directory:
 
-- `*_MF*.tif` – methane enhancement / matched-filter output (ΔX in ppm·m).
-- `*_MF_uncertainty.tif` – propagated instrument-noise uncertainty (σ_RMN).
+- `*_MF*.tif` – gas enhancement / matched-filter output (ΔX in ppm·m).
+- `*_MF_uncertainty.tif` – propagated instrument-noise uncertainty (σ_RMN); it does not include plume-segmentation or total-uncertainty terms (`sigma_tot`).
 - `*_MF_sensitivity.tif` – sensitivity map (only for `--*-mf-mode jpl`).
 - `*_RGB.tif` or `*_rgb.tif` – quick-look RGB composite (sensor-specific naming).
 - `*_CL.tif` or `*_classified.tif` – classified result (sensor-specific naming).
