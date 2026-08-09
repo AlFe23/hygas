@@ -4,47 +4,92 @@
   <img src="GA_repo_fixed.JPG" alt="HyGAS framework schematic" width="700" />
 </p>
 
-HyGAS is a multi-sensor framework for methane enhancement retrieval (ppm·m), uncertainty propagation, scale-aware plume segmentation, and IME/flux estimation from high-resolution imaging spectrometers.
+HyGAS is an open-source framework for analysing gas plumes from imaging spectroscopy. Its published, validated workflow is for **methane (CH₄)**: it retrieves path-integrated enhancements (ΔX, **ppm·m**) from Level-1 radiances, characterises uncertainty, and supports consistent plume segmentation, Integrated Mass Enhancement (IME), and flux analysis across multiple satellite products.
 
-- End-to-end matched-filter pipelines for **PRISMA**, **EnMAP**, and **Tanager** Level-1 radiances.
-- Downstream (segmentation → IME/flux) support for Level-2 enhancement products such as **EMIT** (JPL MF L2B) and **GHGSat** (via notebooks).
+The graphical abstract above is the published visual summary of the HyGAS CH₄ framework. The repository also contains an **experimental Tanager-1 CO₂ retrieval**; its scope and current limitations are stated explicitly below.
 
+## What HyGAS supports
 
-## Reference paper (ATBD)
+| Input / sensor | Gas | Entry point | Retrieval outputs | Common plume analysis | Status |
+| --- | --- | --- | --- | --- | --- |
+| PRISMA Level-1 + L2C | CH₄ | CLI, scene or batch | ΔX, instrument uncertainty (`σ_RMN`), class map, RGB | Yes, through analysis notebooks | Published workflow |
+| EnMAP Level-1B radiances | CH₄ | CLI, scene or batch | ΔX, `σ_RMN`, class map, RGB | Yes, through analysis notebooks | Published workflow |
+| Tanager-1 Basic radiance + surface reflectance | CH₄ | CLI, scene | ΔX, `σ_RMN`, class map, RGB | Yes, through analysis notebooks | Published workflow |
+| EMIT Level-2B CH₄ enhancement | CH₄ | Analysis notebooks | Provider ΔX and uncertainty are ingested | Yes | Published downstream workflow |
+| GHGSat Level-2 CH₄ product | CH₄ | Analysis notebooks | Provider ΔX and uncertainty are ingested | Yes | Published downstream workflow |
+| Tanager-1 Basic radiance + surface reflectance | CO₂ | CLI, scene | ΔX, `σ_RMN`, class map, RGB | **No** | Experimental retrieval path |
 
-The algorithmic framework implemented here is described in:
+`σ_RMN` is propagated instrument-noise uncertainty. The background/clutter term (`σ_surf`), total uncertainty (`σ_tot`), segmentation, IME, and flux steps are the **downstream scientific-analysis workflow** used by the case-study notebooks; they are not produced by the retrieval CLI alone.
 
-Ferrari, A.; Pampanoni, V.; Laneve, G.; Carvajal Tellez, R.A.; Saquella, S.
-*A Multi-Sensor Framework for Methane Detection and Flux Estimation with Scale-Aware Plume Segmentation and Uncertainty Propagation from High-Resolution Spaceborne Imaging Spectrometers*.
-**Methane** 2026, 5(1), 10.
-DOI: [10.3390/methane5010010](https://doi.org/10.3390/methane5010010)
-Publisher page: <https://www.mdpi.com/2674-0389/5/1/10>
+## How the CH₄ framework works
 
+HyGAS uses the same physical and statistical chain for Level-1 CH₄ retrievals from PRISMA, EnMAP, and Tanager-1:
 
-## Repository Structure
+1. A scene-specific, LUT-derived radiance target represents a 1 ppm·m CH₄ enhancement, including the sensor spectral response.
+2. A matched filter estimates a ΔX map and propagates radiometric noise into a per-pixel `σ_RMN` map.
+3. Semi-automatic, scale-aware segmentation defines comparable plume masks at each sensor's native resolution.
+4. Plume-free pixels with continuum spectra similar to the background beneath each mask are selected to estimate surface/background clutter (`σ_surf`); it combines with `σ_RMN` to form `σ_tot`.
+5. The common IME and effective-wind formulation yields plume mass, flux, and their uncertainty.
 
-- `scripts/main.py` – unified CLI entry point (PRISMA/EnMAP: scene+batch; Tanager: scene).
-- `scripts/pipelines/` – satellite orchestration layers (I/O → MF → σ_RMN → exports).
-- `scripts/core/` – shared LUT/targets/MF/noise/report utilities.
-- `scripts/satellites/` – satellite adapters/readers (PRISMA/EnMAP/Tanager/EMIT).
-- `scripts/plumes_analyzer.py` – IME/flux computation + uncertainty propagation on plume polygons.
-- `notebooks/` – analysis notebooks (paper + development).
-- `docs/` – paper-to-code mapping and documentation.
-- `test_commands.sh` – curated end-to-end command examples (local paths).
+### CH₄ uncertainty treatment
 
-## Requirements & Setup
+For PRISMA, EnMAP, and Tanager-1 Level-1 retrievals, HyGAS first propagates the sensor's radiometric noise through the matched filter to obtain the per-pixel instrument term `σ_RMN`. It then estimates a scene-level clutter term, `σ_surf`, from matched-filter variability over plume-free pixels selected for their continuum spectral similarity to the background beneath the plume. The background-aware uncertainty is calculated per pixel as `σ_tot = √(σ_RMN² + σ_surf²)` and is propagated to IME and flux in the downstream analysis. This separates detector/radiometric precision from surface-driven and residual background variability.
 
-1. Python ≥ 3.11 with GDAL bindings installed (compiled with the same Python).
-2. Project dependencies from `requirements-pip.txt`.
-3. Access to:
-   - PRISMA Level-1/Level-2C HE5 or ZIP archives.
-   - EnMAP VNIR/SWIR GeoTIFFs with matching METADATA.XML.
-   - Tanager radiance HDF5 + surface reflectance HDF5 (for water vapour).
-   - Methane LUT: download `dataset_ch4_full.hdf5` from the University of Utah HIVE dataset ([landing page](https://hive.utah.edu/concern/datasets/9w0323039), [file set](https://hive.utah.edu/concern/parent/9w0323039/file_sets/ht24wj452)). Mirror: [LUT CH4](https://drive.google.com/file/d/196adGp_XCcTXAk3SRjiOnBJxUhDANNvn/view?usp=sharing). Please cite: Markus D. Foote et al., “Impact of Scene-Specific Enhancement Spectra on Matched Filter GreenhouseGas Retrievals from Imaging Spectroscopy,” *Remote Sensing of Environment*.
-   - CO2 LUT (`dataset_co2_full.hdf5`) for Tanager CO2 processing. The LUT must have the same `modtran_data`, `modtran_param`, and `wave` structure as the methane LUT.
-   - DEM (NetCDF): required for PRISMA and Tanager (used to derive mean ground elevation for LUT interpolation; expects variables `lat`, `lon`, `elev` in meters). Source: [SRTM30 Global 1 km DEM v1.1](https://catalog.data.gov/dataset/srtm30-global-1-km-digital-elevation-model-dem-version-11-land-surface). Mirror: [DEM](https://drive.google.com/file/d/10e1VtibryVxcHT4-Gb0ryhyk17JCF04f/view?usp=sharing).
+For the complete uncertainty ATBD—noise model, spectrally matched-background selection, assumptions, and propagation to IME and flux—refer to the published paper and the [paper-to-code map](docs/paper-notebook-map.md). EMIT and GHGSat use their provider-derived Level-2 uncertainty fields in the downstream HyGAS workflow. The paper is about **CH₄**; it does not validate the repository's later CO₂ extension.
 
-Quick start with conda/mamba using the curated environment:
+### Reference SNR used for `σ_RMN`
+
+The Level-1 uncertainty workflow uses a column-wise reference SNR rather than a single mission-wide number. Each reference is derived from a bright, spatially homogeneous, methane-free desert calibration scene (a Pseudo-Invariant Calibration Site), chosen so that residual spatial variation is dominated by detector behaviour rather than surface structure:
+
+- **PRISMA:** `L1-20200401T085313`, Northern State, Sudan.
+- **EnMAP:** `L1B-20220712T104302`, near Agadez, Niger.
+- **Tanager-1:** `20250509_090323_87_4001`, Northern State, Sudan; the homogeneous upper 220 image rows are selected before estimating the reference.
+
+For every spectral band and detector column, HyGAS calculates the mean radiance and uses the standard deviation of the fourth principal component as the measurement-noise estimate. The reference is `SNR_ref(λ,c) = μ(λ,c) / σ_MN(λ,c)`. For a target scene, SNR is scaled column-wise with radiance under the photon-noise approximation, `SNR(λ,c;L) ≈ SNR_ref(λ,c) √(L(λ,c) / L_ref(λ,c))`; the resulting noise covariance is propagated analytically through the matched filter to produce `σ_RMN`.
+
+The reference-generation and sensitivity experiments are reproducible in the [PRISMA](notebooks/SNR_experiments_prisma.ipynb), [EnMAP](notebooks/SNR_experiments_enmap.ipynb), and [Tanager-1](notebooks/SNR_experiments_tanager.ipynb) notebooks. The [Tanager calibration-selection notebook](notebooks/tanager_calibration_selection.ipynb) documents the homogeneous-row selection; [cross-sensor SNR comparison](notebooks/tanager_prisma_enmap_SNR_comparison.ipynb) provides brightness-normalised comparisons. See the reference paper for the complete radiometric-noise ATBD and its limitations.
+
+## Common HyGAS workflow
+
+HyGAS currently combines **automated retrieval** with **notebook-guided plume analysis**. The CLI is suitable for repeatable single-scene and, where supported, batch retrievals; the final plume masks, total-uncertainty derivation, and IME/flux products are produced through the example notebooks so that image-specific statistics and quality-control choices remain visible and reproducible.
+
+1. **Prepare the input product.** Use a Level-1 radiance product for PRISMA, EnMAP, or Tanager-1, with the required LUT, DEM where applicable, and SNR reference. For EMIT and GHGSat, begin from the provider's Level-2 CH₄ enhancement and uncertainty fields.
+2. **Run or ingest the CH₄ retrieval.** Run `scripts/main.py` for Level-1 scenes to create ΔX and `σ_RMN` rasters, or load Level-2 products in the relevant analysis notebook. Select and record the matched-filter configuration; use multiple configurations when assessing retrieval sensitivity.
+3. **Define the analysis domain.** Inspect the enhancement and uncertainty maps. For a multi-sensor comparison, clip every image to the common footprint before calculating segmentation statistics.
+4. **Segment plumes semi-automatically.** In the case-study notebook, choose the threshold multiplier and physical morphology settings. The notebook calculates robust background statistics separately for every clipped image, converts the shared physical settings to each sensor's pixel grid, and creates candidate masks. Review the masks, remove implausible isolated objects, and merge fragments belonging to the same source and wind-aligned plume where needed.
+5. **Derive total uncertainty.** Use the reviewed plume mask to select spectrally matched, plume-free background pixels. For Level-1 HyGAS retrievals, derive `σ_surf` and combine it with `σ_RMN` to produce `σ_tot`; for Level-2 products, use the uncertainty treatment supplied and documented for that product.
+6. **Calculate and report IME and flux.** Provide the final plume polygons and the selected wind input (including its uncertainty) to the IME/flux workflow. Report ΔX statistics, plume area, IME and `σ_IME`, flux and `σ_flux`, together with the retrieval, segmentation, and wind settings.
+
+This is intentionally not a one-click plume-to-flux batch processor yet: the notebook stage exposes the scene-dependent choices that most affect plume extent and quantitative uncertainty. The [notebook index](notebooks/README.md) and the case studies linked below provide executable examples of this workflow.
+
+## Multi-sensor consistency
+
+For each matchup, HyGAS clips all enhancement maps to their shared footprint, then runs the same downstream IME and flux workflow. The plume segmentation is **semi-automatic**:
+
+- For every sensor image, robust background statistics (`μ_bg` and `σ_bg`) are calculated independently from that image's clipped enhancement map. Candidate plume pixels are selected with the same statistical rule, `ΔX > μ_bg + n·σ_bg`.
+- Smoothing, morphology, maximum gap, and minimum plume area are defined once in physical units. They are converted to pixel units using each sensor's ground sampling distance, so the geometric criteria remain comparable at different resolutions.
+- Connected components and morphological filtering create the initial masks. A final review discards isolated structures inconsistent with the prevailing wind direction and can merge adjacent fragments that share a source and advective direction.
+
+This preserves image-specific background behaviour while applying common physical segmentation criteria. The resulting masks feed the same IME and effective-wind flux equations. For Level-1 PRISMA, EnMAP, and Tanager-1 products, HyGAS also separates instrument noise from spectrally matched background clutter; EMIT and GHGSat enter with provider-derived Level-2 enhancement and uncertainty fields.
+
+The published examples are:
+
+- [Buenos Aires: EnMAP, EMIT, and GHGSat](notebooks/BA_plume_detection_scaled.ipynb) with [IME/flux analysis](notebooks/BA_plume_analysis_enmap_ghgsat_emit.ipynb)
+- [Turkmenistan: PRISMA, EnMAP, and GHGSat](notebooks/Turkmenistan_plume_detection_scaled.ipynb) with [IME/flux analysis](notebooks/Turkmenistan_plume_analysis_enmap_prisma_ghgsat.ipynb)
+- [Pakistan: EMIT and GHGSat](notebooks/Pakistan_plume_detection_scaled.ipynb) with [IME/flux analysis](notebooks/Pakistan_plume_analysis_emit_ghgsat.ipynb)
+- [EnMAP and Tanager-1 revisit comparison](notebooks/BA2_plume_detection_single_MF.ipynb) with [IME/flux analysis](notebooks/BA2_plume_analysis_single_MF.ipynb)
+
+## Reference paper
+
+The CH₄ framework implemented here is described in:
+
+Ferrari, A.; Pampanoni, V.; Laneve, G.; Carvajal Tellez, R.A.; Saquella, S. *A Multi-Sensor Framework for Methane Detection and Flux Estimation with Scale-Aware Plume Segmentation and Uncertainty Propagation from High-Resolution Spaceborne Imaging Spectrometers*. **Methane** 2026, 5(1), 10. DOI: [10.3390/methane5010010](https://doi.org/10.3390/methane5010010).
+
+The exact relationship between paper sections, figures, code, and notebooks is documented in [docs/paper-notebook-map.md](docs/paper-notebook-map.md).
+
+## Installation and inputs
+
+HyGAS requires Python 3.11 or later and GDAL bindings compiled for the same Python interpreter. Create the curated environment with:
 
 ```bash
 mamba env create -f environment.min.yml
@@ -52,90 +97,31 @@ mamba activate hygas
 pip install -r requirements-pip.txt
 ```
 
-The `environment.min.yml` file pins GDAL/PROJ, PyTorch (CPU build), and the essential scientific stack. If you prefer a lighter setup, you can still create your own environment manually and `pip install -r requirements-pip.txt`, but make sure GDAL is compiled against the same Python interpreter.
+Confirm that `from osgeo import gdal` works before running a pipeline.
 
-Confirm GDAL works by importing `osgeo.gdal` inside the environment before running the pipelines.
+You will need the following data, as applicable:
 
-## CLI Overview
+- PRISMA Level-1 and Level-2C HE5 files (or official ZIP archives).
+- EnMAP VNIR/SWIR GeoTIFFs with their matching `METADATA.XML`.
+- Tanager Basic radiance and companion surface-reflectance HDF5 products.
+- A CH₄ LUT, `dataset_ch4_full.hdf5`, from the [University of Utah HIVE dataset](https://hive.utah.edu/concern/datasets/9w0323039) (or the [repository mirror](https://drive.google.com/file/d/196adGp_XCcTXAk3SRjiOnBJxUhDANNvn/view?usp=sharing)). Please cite Foote et al., *Impact of Scene-Specific Enhancement Spectra on Matched Filter GreenhouseGas Retrievals from Imaging Spectroscopy*.
+- A DEM NetCDF file for PRISMA and Tanager. It must provide `lat`, `lon`, and `elev` in metres; the [SRTM30 Global 1 km DEM](https://catalog.data.gov/dataset/srtm30-global-1-km-digital-elevation-model-dem-version-11-land-surface) is one suitable source.
+- A column-wise SNR-reference `.npz` for uncertainty propagation. Pass `--snr-reference` or set `PRISMA_SNR_REFERENCE`, `ENMAP_SNR_REFERENCE`, or `TANAGER_SNR_REFERENCE`.
+- For the CO₂ path only, a compatible `dataset_co2_full.hdf5` LUT with the same `modtran_data`, `modtran_param`, and `wave` structure as the CH₄ LUT.
 
-All executions go through:
+## Retrieval quick start
 
-```bash
-python scripts/main.py --satellite {prisma|enmap|tanager} --mode {scene|batch} [options]
-```
-
-Note: `--satellite tanager` currently supports `--mode scene` only.
-
-Global options:
-
-- `--min-wavelength / --max-wavelength` – spectral window (nm) forwarded to both pipelines and included in the processing reports.
-- `--k` – number of clusters for k-means based target estimation.
-- `--log-file` – optional path to capture INFO-level logs in addition to stdout.
-- `--save-rads` – PRISMA only; export the full radiance cube GeoTIFF (disabled by default to avoid multi-GB outputs).
-- `--snr-reference` – path to the column-wise SNR reference `.npz` used for σ_RMN propagation and JPL MF. If omitted, the pipelines fall back to `PRISMA_SNR_REFERENCE` / `ENMAP_SNR_REFERENCE` / `TANAGER_SNR_REFERENCE` env vars.
-- `--gas {ch4,co2}` – target gas. `co2` is currently available only for a Tanager scene and automatically uses the 1900–2100 nm window unless overridden.
-
-### Matched-filter variant naming (paper ↔ CLI)
-
-The paper uses CMF/CTMF/CWCMF terminology. In the CLI:
-
-- **CMF** (scene-wide) → `--*-mf-mode srf-column --k 1`
-- **CTMF (k=3)** → `--*-mf-mode srf-column --k 3`
-- **CWCMF** (column-wise) → `--*-mf-mode full-column`
-
-Additional research modes:
-- `advanced` (grouped PCA + shrinkage): implemented in `advanced_matched_filter.py`
-- `jpl` (JPL/EMIT MF adaptation): implemented in `scripts/core/jpl_matched_filter.py`
-
-## PRISMA Manual
-
-### Single Scene
+All retrievals use the unified entry point:
 
 ```bash
-python scripts/main.py \
-  --satellite prisma --mode scene \
-  --l1 /path/to/PRS_L1_STD_OFFL_YYYYMMDDhhmmss_xxxx.he5 \
-  --l2c /path/to/PRS_L2C_STD_YYYYMMDDhhmmss_xxxx.he5 \
-  --dem /path/to/dem.nc \
-  --lut /path/to/dataset_ch4_full.hdf5 \
-  --output /path/to/output_dir \
-  --min-wavelength 2100 \
-  --max-wavelength 2450 \
-  --k 1 \
-  --prisma-mf-mode srf-column \
-  --log-file logs/prisma_scene.log
+python scripts/main.py --satellite {prisma|enmap|tanager} --mode {scene|batch} --lut /path/to/lut.hdf5 [options]
 ```
 
-Both `--l1` and `--l2c` accept `.he5` files or ZIP archives. ZIP inputs are unpacked automatically next to the archive, processed, and deleted once the run finishes. When `--output` is omitted the pipeline writes to `<scene_dir>_output`.
+Tanager currently supports `--mode scene` only. PRISMA and EnMAP accept both scene and batch modes.
 
-`--prisma-mf-mode` mirrors the EnMAP option:
+Common options are `--min-wavelength` / `--max-wavelength` (spectral window), `--k` (cluster count for `srf-column`), `--snr-reference` (or its sensor-specific environment-variable fallback), and `--log-file`. `--save-rads` additionally exports the full PRISMA radiance cube and is intentionally unavailable for the other sensors.
 
-- `srf-column` (default) uses k-means clusters plus column-wise SRF targets (legacy workflow).
-- `full-column` skips clustering and derives per-column mean/covariance so the matched filter fully adapts to each detector column.
-- `advanced` enables the grouped PCA + shrinkage workflow.
-- `jpl` runs the JPL MF adaptation (primarily useful for method comparisons).
-
-### Batch Mode
-
-```bash
-python scripts/main.py \
-  --satellite prisma --mode batch \
-  --root-directory /path/to/prisma_root \
-  --dem /path/to/dem.nc \
-  --lut /path/to/dataset_ch4_full.hdf5 \
-  --output-root /path/to/output_root \
-  --min-wavelength 2100 \
-  --max-wavelength 2450 \
-  --k 1 \
-  --prisma-mf-mode full-column \
-  --log-file logs/prisma_batch.log
-```
-
-The batch driver scans every subfolder under `--root-directory`, pairs L1/L2C (HE5 or ZIP), and mirrors the input structure under `--output-root`. If `--output-root` is omitted, outputs land next to each scene folder (e.g., `20240911... -> 20240911..._output`).
-
-## EnMAP Manual
-
-### Single Scene
+### CH₄: EnMAP single scene
 
 ```bash
 python scripts/main.py \
@@ -144,60 +130,14 @@ python scripts/main.py \
   --swir /path/to/...-SPECTRAL_IMAGE_SWIR.TIF \
   --metadata /path/to/...-METADATA.XML \
   --lut /path/to/dataset_ch4_full.hdf5 \
-  --output /path/to/output_dir \
-  --k 1 \
-  --min-wavelength 2150 \
-  --max-wavelength 2450 \
-  --enmap-mf-mode srf-column \
-  --log-file logs/enmap_scene.log
-```
-
-`--enmap-mf-mode` selects the matched-filter flavor:
-
-- `srf-column` (default) keeps the **MF columnwise SRF with cluster tuning option**, i.e., target spectra are tiled across columns while μ/Σ come from k-means clusters.
-- `full-column` activates the true column-wise implementation with per-column mean radiance and covariance (no clustering) so both SRF and statistics adapt to each detector column.
-- `advanced` activates the grouped PCA + shrinkage workflow.
-- `jpl` runs the JPL MF adaptation (EMIT-style).
-
-### Batch Mode
-
-```bash
-python scripts/main.py \
-  --satellite enmap --mode batch \
-  --root-directory /path/to/enmap_root \
-  --lut /path/to/dataset_ch4_full.hdf5 \
-  --k 1 \
-  --min-wavelength 2150 \
-  --max-wavelength 2450 \
-  --enmap-mf-mode full-column \
-  --log-file logs/enmap_batch.log
-```
-
-Each scene directory inside `--root-directory` must contain the VNIR/SWIR GeoTIFFs and the METADATA.XML file. Outputs are written to `<scene>_output` siblings, mirroring the legacy workflow.
-
-## Tanager Manual
-
-Tanager is supported in `--mode scene` only (batch mode is not implemented in `scripts/main.py`).
-
-The default target gas is methane. The default methane window is 2100–2450 nm; the CO2 workflow uses a separate CO2 LUT and defaults to 1900–2100 nm.
-
-```bash
-python scripts/main.py \
-  --satellite tanager --mode scene \
-  --tanager-rad /path/to/basic_radiance.h5 \
-  --tanager-sr /path/to/surface_reflectance.h5 \
-  --dem /path/to/dem.nc \
-  --lut /path/to/dataset_ch4_full.hdf5 \
   --snr-reference /path/to/snr_reference_columnwise.npz \
   --output /path/to/output_dir \
-  --min-wavelength 2100 \
-  --max-wavelength 2450 \
-  --k 1 \
-  --tanager-mf-mode full-column \
-  --log-file logs/tanager_scene.log
+  --enmap-mf-mode full-column
 ```
 
-CO2 Tanager scene:
+The default CH₄ window is 2100–2450 nm. Use `--min-wavelength` and `--max-wavelength` to override it.
+
+### CO₂: Tanager single scene
 
 ```bash
 python scripts/main.py \
@@ -211,140 +151,128 @@ python scripts/main.py \
   --tanager-mf-mode full-column
 ```
 
-### CO2 Functionality And Test Scene
+CO₂ defaults to 1900–2100 nm. This path has been exercised on the Tanager-1 Korba/Kusmunda scene (`20250219_053251_31_4001`) with 40 selected bands, but it is an engineering test of data loading, target synthesis, uncertainty propagation, and export—not a validation of CO₂ plume detection or retrieved magnitude.
 
-CO2 processing is currently implemented for Tanager single scenes only. With `--gas co2`, HyGAS loads the CO2 MODTRAN LUT, synthesizes a scene-specific target spectrum from median solar zenith angle, water vapour, and DEM elevation, and runs the selected matched-filter variant. The default CO2 window is 1900–2100 nm; users may override it with `--min-wavelength` and `--max-wavelength`.
+## Matched-filter modes
 
-The workflow produces a CO2 matched-filter enhancement map, the propagated instrument-noise uncertainty (`sigma_RMN`), a technical classification map, and an RGB quicklook. It does not yet include plume segmentation, background-noise quantification, flux estimation, or total uncertainty (`sigma_tot`). Consequently, the output is suitable for algorithmic testing and subsequent validation, but should not be considered a quantitatively validated CO2 plume product without an independent reference.
+| Paper term | CLI selection | Intended use |
+| --- | --- | --- |
+| CMF (scene-wide) | `--*-mf-mode srf-column --k 1` | Scene-wide background statistics with column-wise targets |
+| CTMF (k = 3) | `--*-mf-mode srf-column --k 3` | Cluster-tuned background statistics |
+| CWCMF (column-wise) | `--*-mf-mode full-column` | Per-detector-column target/statistics; `--k` is ignored |
 
-The implementation was tested end-to-end with the following Planet Tanager-1 Basic products:
+`advanced` (grouped PCA plus shrinkage) and `jpl` (JPL/EMIT-style adaptation) are additional research modes. The CLI default is `srf-column`; in the published multi-sensor CH₄ case studies, **CWCMF / `full-column`** was the primary reference configuration because it most consistently reduced detector-column artefacts and stabilised IME/flux estimates.
 
-- Scene ID: `20250219_053251_31_4001`.
-- Acquisition: `2025-02-19 05:32:51.310 UTC`.
-- Area: Kusmunda/Korba, Chhattisgarh, India.
-- Inputs: companion Basic radiance and surface-reflectance HDF5 products.
-- Configuration: `--gas co2 --tanager-mf-mode full-column`, 40 selected bands in the 1900–2100 nm interval, CO2 LUT `dataset_co2_full.hdf5`, and the Tanager column-wise SNR reference.
+## Sensor-specific commands
 
-This test verified that the real scene, LUT, target synthesis, SNR propagation, and GeoTIFF export execute successfully. It was not used to validate plume detection performance or retrieved CO2 enhancement magnitude.
-
-## Outputs & Reporting
-
-Every run produces a set of GeoTIFFs plus a text report under the chosen output directory:
-
-- `*_MF*.tif` – gas enhancement / matched-filter output (ΔX in ppm·m).
-- `*_MF_uncertainty.tif` – propagated instrument-noise uncertainty (σ_RMN); it does not include plume-segmentation or total-uncertainty terms (`sigma_tot`).
-- `*_MF_sensitivity.tif` – sensitivity map (only for `--*-mf-mode jpl`).
-- `*_RGB.tif` or `*_rgb.tif` – quick-look RGB composite (sensor-specific naming).
-- `*_CL.tif` or `*_classified.tif` – classified result (sensor-specific naming).
-- `processing_report.txt` – provenance summary (inputs, parameters, spectral window, statistics).
-
-PRISMA batch runs also emit `directory_process_report_<timestamp>.txt` summarizing successes/failures per scene.
-
-## Logging & Diagnostics
-
-- STDOUT always receives INFO logs; use `--log-file path.log` to keep a copy.
-- Temporary PRISMA extractions are cleaned automatically; failures to delete are logged as warnings.
-- For quick local validation, run the commands stored in `test_commands.sh` (paths assume the `test_data/` bundle under the repo).
-
-## Tips & Troubleshooting
-
-- DEM files are mandatory for PRISMA and Tanager but ignored for EnMAP.
-- When processing ZIP archives, ensure each contains exactly one `.he5` file; otherwise the CLI aborts with a clear error.
-- If you see `Missing required ... arguments` revisit the per-mode required options listed above.
-- Spectral window and `k` parameters are persisted in the processing report—helpful when comparing runs.
-
-The legacy `scripts/PRISMA/prisma_MF.py` and `scripts/EnMAP/enmap_MF.py` remain callable for backwards compatibility but simply forward into the new CLI. Prefer `scripts/main.py` for all new runs.
-
-## Scripts (diagnostics & utilities)
-
-Beyond the end-to-end pipelines, the repo ships lightweight analysis scripts used by the paper notebooks and for development/validation:
-
-- Pipelines:
-  - `scripts/main.py` – main entrypoint (PRISMA/EnMAP batch + scene; Tanager scene).
-  - `scripts/run_enmap_case_studies.py`, `scripts/run_prisma_case_studies.py`, `scripts/run_tanager_case_studies.py` – run predefined case studies across multiple MF modes.
-- Radiometry (SNR / smile / striping):
-  - `scripts/snr_experiment.py` – consolidated A–H SNR experiment CLI (PRISMA/EnMAP/Tanager/EMIT radiance inputs).
-  - `scripts/enmap_smile.py`, `scripts/prisma_smile.py` – spectral smile diagnostics (CW/FWHM, Δλ).
-  - `scripts/diagnostics/striping.py` – striping metrics + light destriping primitives (used by SNR/striping notebooks).
-  - `scripts/SNR_enmap.py`, `scripts/SNR_prisma.py` – standalone SNR estimators (legacy but still useful for quick plotting).
-  - `scripts/SNR_tanager_reference.py` – generates a `ColumnwiseSNRReference` (`.npz`) for Tanager.
-- Plume products (IME / flux):
-  - `scripts/plumes_analyzer.py` – IME and flux estimation on plume polygons + uncertainty propagation.
-- Data inspection / helpers:
-  - `scripts/inspect_prisma_hdf.py` – explore PRISMA HE5/ZIP structure from the terminal.
-  - `scripts/inspect_tanager_hdf.py` – explore Tanager HDF5/ZIP structure from the terminal.
-  - `scripts/tanager_quicklook.py` – build a quick RGB preview from Tanager TOA radiance.
-  - `scripts/ghgsat_catalog_to_geojson.py` – convert a GHGSat catalog CSV export to GeoJSON (points + buffers).
-
-Run utilities from the repo root so imports resolve, e.g.:
+### PRISMA
 
 ```bash
-PYTHONPATH=. python scripts/enmap_smile.py --help  # edit the __main__ block for your scene paths
-PYTHONPATH=. python scripts/SNR_prisma.py
+python scripts/main.py \
+  --satellite prisma --mode scene \
+  --l1 /path/to/PRS_L1_STD_OFFL_YYYYMMDDhhmmss_xxxx.he5 \
+  --l2c /path/to/PRS_L2C_STD_YYYYMMDDhhmmss_xxxx.he5 \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --output /path/to/output_dir \
+  --prisma-mf-mode full-column
 ```
 
-The four plotting-oriented utilities share the same 3×2 layout and rely on the existing `prisma_utils.py` / `enmap_utils.py` readers, so any improvements to the satellite helpers automatically benefit both the operational pipelines and these diagnostics.
+PRISMA accepts HE5 files or official ZIP archives. Batch mode scans scene folders under `--root-directory` and writes a corresponding output tree under `--output-root` (or adjacent to each input scene when omitted).
 
-## Notebooks (paper)
+```bash
+python scripts/main.py \
+  --satellite prisma --mode batch \
+  --root-directory /path/to/prisma_root \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --output-root /path/to/output_root \
+  --prisma-mf-mode full-column
+```
 
-Only the notebooks used for the `methane-4061227` paper are listed here. For a complete notebook index (excluding ongoing work in `notebooks/to_rev/`), see `notebooks/README.md`.
+### EnMAP
 
-- `notebooks/ch4_radiance_windows.ipynb`
-- `notebooks/diagnostics_uncertainty_enmap.ipynb`
-- `notebooks/diagnostics_uncertainty_prisma.ipynb`
-- `notebooks/plume_analysis_enmap.ipynb`
-- `notebooks/SNR_experiments_enmap.ipynb`
-- `notebooks/SNR_experiments_prisma.ipynb`
-- `notebooks/SNR_experiments_tanager.ipynb`
-- `notebooks/tanager_prisma_enmap_SNR_comparison.ipynb`
-- `notebooks/striping_sweep_diagnostics_cal_scenes_triple.ipynb`
-- `notebooks/BA_plume_detection_scaled.ipynb`
-- `notebooks/BA_plume_analysis_enmap_ghgsat_emit.ipynb`
-- `notebooks/Turkmenistan_plume_detection_scaled.ipynb`
-- `notebooks/Turkmenistan_plume_analysis_enmap_prisma_ghgsat.ipynb`
-- `notebooks/Pakistan_plume_detection_scaled.ipynb`
-- `notebooks/Pakistan_plume_analysis_emit_ghgsat.ipynb`
-- `notebooks/BA2_plume_detection_single_MF.ipynb`
-- `notebooks/BA2_plume_analysis_single_MF.ipynb`
+```bash
+python scripts/main.py \
+  --satellite enmap --mode batch \
+  --root-directory /path/to/enmap_root \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --enmap-mf-mode full-column
+```
 
-## PRISMA HDF Exploration
+Each EnMAP scene directory must contain its VNIR and SWIR GeoTIFFs and `METADATA.XML`. Scene mode is shown in the quick-start example above.
 
-Use `scripts/inspect_prisma_hdf.py` to explore the hierarchy of a Level-1 or Level-2C PRISMA product without leaving the terminal. The tool accepts both `.he5` files and the official ZIP archives, automatically extracting the embedded HE5 to a temporary directory when needed.
+### Tanager-1 CH₄
 
-- Tree view (optionally capped by depth and including attributes):
+```bash
+python scripts/main.py \
+  --satellite tanager --mode scene \
+  --tanager-rad /path/to/basic_radiance.h5 \
+  --tanager-sr /path/to/surface_reflectance.h5 \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --output /path/to/output_dir \
+  --tanager-mf-mode full-column
+```
 
-  ```bash
-  python scripts/inspect_prisma_hdf.py \
-    test_data/prisma/20240911071151/PRS_L2C_STD_20240911071151_20240911071155_0001.zip \
-    --max-depth 2 --attrs
-  ```
+## Retrieval outputs and scope
 
-- Focus on a specific dataset or group with a quick preview of numeric values:
+Each CLI retrieval writes sensor-specific GeoTIFF names under the output directory:
 
-  ```bash
-  python scripts/inspect_prisma_hdf.py \
-    test_data/prisma/20240911071151/PRS_L2C_STD_20240911071151_20240911071155_0001.zip \
-    --path "HDFEOS/SWATHS/PRS_L2C_WVM/Data Fields/WVM_Map" \
-    --preview 5 --attrs
-  ```
+| Output | Meaning |
+| --- | --- |
+| `*_MF.tif` | Matched-filter gas enhancement, ΔX (ppm·m) |
+| `*_MF_uncertainty.tif` | Propagated instrument-noise uncertainty, `σ_RMN` |
+| `*_CL.tif` / `*_classified.tif` | Technical classification map used by the selected MF mode |
+| `*_RGB.tif` / `*_rgb.tif` | RGB quicklook |
+| `*_MF_sensitivity.tif` | Sensitivity map exported by `jpl` mode for PRISMA and EnMAP |
+| `processing_report.txt` | Inputs, parameters, spectral window, and processing provenance |
 
-Append `--output /path/to/report.txt` to save the listing to disk in addition to printing it on screen. `--path` accepts any HDF dataset/group path, `--preview` limits how many numeric values are sampled (the script only reads a thin block to avoid loading whole cubes), and `--max-members` caps how many children are listed when inspecting a group.
+PRISMA batch runs also create a `directory_process_report_<timestamp>.txt` summary. `*_MF_uncertainty.tif` is **not** a total plume-analysis uncertainty: it excludes the spectrally matched clutter term, segmentation effects, and flux/wind contributions.
 
-## Tanager HDF Exploration
+### CO₂ limitations
 
-Two small utilities help verify Planet Tanager Basic/Ortho HDF5 deliveries (see `product_spec_docs/tanager/Planet-UserDocumentation-Tanager.pdf` for the field definitions).
+The CO₂ implementation is limited to Tanager scene retrieval. It creates the same four basic retrieval outputs (ΔX, `σ_RMN`, classification, RGB), but currently does **not** implement CO₂ background-clutter quantification, `σ_tot`, scale-aware segmentation, IME, flux, or validation against an independent CO₂ reference. Do not treat its output as a quantitatively validated CO₂ plume product.
 
-- Inspect hierarchy or a specific dataset/attribute (ZIP inputs are unpacked automatically):
+## Notebooks and examples
 
-  ```bash
-  python scripts/inspect_tanager_hdf.py /path/to/tanager_scene.h5 --max-depth 2 --attrs
-  python scripts/inspect_tanager_hdf.py /path/to/tanager_scene.zip --path "HDFEOS/SWATHS/HYP/Data Fields/toa_radiance" --preview 8
-  ```
+The paper notebook index is in [notebooks/README.md](notebooks/README.md). Useful entry points are:
 
-- Build a quick RGB preview from the TOA radiance cube (auto-selects 665/565/490 nm bands and applies a 2–98% stretch):
+- [CH₄ radiance windows and LUT targets](notebooks/ch4_radiance_windows.ipynb)
+- [EnMAP uncertainty walkthrough](notebooks/diagnostics_uncertainty_enmap.ipynb)
+- [PRISMA uncertainty walkthrough](notebooks/diagnostics_uncertainty_prisma.ipynb)
+- [Spectrally matched background selection](notebooks/plume_analysis_enmap.ipynb)
+- [PRISMA, EnMAP, and Tanager SNR experiments](notebooks/SNR_experiments_prisma.ipynb), [EnMAP](notebooks/SNR_experiments_enmap.ipynb), and [Tanager](notebooks/SNR_experiments_tanager.ipynb)
+- [Cross-sensor SNR comparison](notebooks/tanager_prisma_enmap_SNR_comparison.ipynb) and [striping diagnostics](notebooks/striping_sweep_diagnostics_cal_scenes_triple.ipynb)
 
-  ```bash
-  python scripts/tanager_quicklook.py /path/to/tanager_scene.h5 --summary --output outputs/tanager_rgb.png
-  ```
+Notebook outputs are deliberately excluded from version control. When adding a new README example figure, create a clean, captioned, unit-checked derivative under `docs/assets/` rather than linking directly to `notebooks/outputs/`.
 
-Use `--rgb-wavelengths`, `--stretch`, or `--gamma` to tweak the quicklook rendering, `--pixel r c` to print a per-pixel spectrum, and `--no-mask` to skip applying the `nodata_pixels` mask when deriving RGB.
+## Utilities and troubleshooting
+
+- `scripts/snr_experiment.py` runs the A–H SNR experiment for PRISMA, EnMAP, Tanager, or EMIT inputs.
+- `scripts/enmap_smile.py` and `scripts/prisma_smile.py` provide spectral-smile diagnostics.
+- `scripts/plumes_analyzer.py` computes IME, flux, and uncertainty on supplied plume polygons.
+- `scripts/inspect_prisma_hdf.py` and `scripts/inspect_tanager_hdf.py` inspect product structures; `scripts/tanager_quicklook.py` creates an RGB preview.
+- `scripts/ghgsat_catalog_to_geojson.py` converts GHGSat catalogue CSV exports to point/buffer GeoJSON.
+
+Run utilities from the repository root. The legacy `scripts/PRISMA/prisma_MF.py` and `scripts/EnMAP/enmap_MF.py` entry points remain for backwards compatibility, but new retrievals should use `scripts/main.py`.
+
+If a pipeline reports missing required inputs, check the sensor-specific command above. PRISMA and Tanager require a DEM; EnMAP ignores it. Record the chosen spectral window, MF mode, SNR reference, and `k` when comparing products.
+
+## Repository layout
+
+- `scripts/main.py` — unified retrieval CLI.
+- `scripts/pipelines/` — PRISMA, EnMAP, and Tanager orchestration.
+- `scripts/core/` — LUT, targets, matched filters, noise, and reporting utilities.
+- `scripts/satellites/` — sensor readers and adapters.
+- `scripts/plumes_analyzer.py` — downstream IME/flux utilities.
+- `notebooks/` — published-workflow and development notebooks.
+- `docs/paper-notebook-map.md` — paper section/figure to implementation mapping.
+
+## License
+
+See [LICENSE](LICENSE).
