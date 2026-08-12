@@ -60,12 +60,12 @@ def build_parser():
     parser.add_argument(
         "--min-wavelength",
         type=float,
-        help="Minimum wavelength (nm). Defaults to 2100 for CH4 and 1900 for Tanager CO2.",
+        help="Minimum wavelength (nm). Defaults to 2100 for CH4 and 1900 for CO2.",
     )
     parser.add_argument(
         "--max-wavelength",
         type=float,
-        help="Maximum wavelength (nm). Defaults to 2450 for CH4 and 2100 for Tanager CO2.",
+        help="Maximum wavelength (nm). Defaults to 2450 for CH4 and 2100 for CO2.",
     )
     parser.add_argument(
         "--prisma-mf-mode",
@@ -112,7 +112,7 @@ def build_parser():
         "--gas",
         choices=["ch4", "co2"],
         default="ch4",
-        help="Target gas. CO2 is currently implemented for Tanager scene processing only.",
+        help="Target gas for all supported satellites.",
     )
 
     return parser
@@ -136,12 +136,6 @@ def main(argv=None):
     logging.getLogger(__name__).info(
         "Starting %s %s run", args.satellite.upper(), args.mode.upper()
     )
-
-    if args.satellite != "tanager" and args.gas != "ch4":
-        parser.error("CO2 processing is currently implemented for Tanager scene mode only.")
-
-    methane_min_wavelength = 2100.0 if args.min_wavelength is None else args.min_wavelength
-    methane_max_wavelength = 2450.0 if args.max_wavelength is None else args.max_wavelength
 
     if args.satellite == "prisma":
         if args.mode == "scene":
@@ -179,18 +173,19 @@ def main(argv=None):
                 scene_dir = l1_path.parent
                 output_dir = str(scene_dir.parent / f"{scene_dir.name}_output")
             try:
-                prisma_pipeline.ch4_detection(
+                prisma_pipeline.detection_prisma(
                     L1_file=L1_scene_file,
                     L2C_file=L2C_scene_file,
                     dem_file=args.dem,
                     lut_file=args.lut,
                     output_dir=output_dir,
-                    min_wavelength=methane_min_wavelength,
-                    max_wavelength=methane_max_wavelength,
+                    min_wavelength=args.min_wavelength,
+                    max_wavelength=args.max_wavelength,
                     k=args.k,
                     mf_mode=args.prisma_mf_mode,
                     save_rads=args.save_rads,
                     snr_reference_path=args.snr_reference,
+                    gas=args.gas,
                 )
             finally:
                 for extracted_file in temp_extractions:
@@ -210,13 +205,14 @@ def main(argv=None):
                 root_dir=args.root_directory,
                 dem_file=args.dem,
                 lut_file=args.lut,
-                min_wavelength=methane_min_wavelength,
-                max_wavelength=methane_max_wavelength,
+                min_wavelength=args.min_wavelength,
+                max_wavelength=args.max_wavelength,
                 k=args.k,
                 mf_mode=args.prisma_mf_mode,
                 output_root_dir=output_root,
                 save_rads=args.save_rads,
                 snr_reference_path=args.snr_reference,
+                gas=args.gas,
             )
     elif args.satellite == "enmap":
         if args.mode == "scene":
@@ -229,17 +225,18 @@ def main(argv=None):
                 scene_dir = Path(args.vnir).resolve().parent
                 output_dir = str(scene_dir.parent / f"{scene_dir.name}_output")
 
-            enmap_pipeline.ch4_detection_enmap(
+            enmap_pipeline.detection_enmap(
                 vnir_file=args.vnir,
                 swir_file=args.swir,
                 metadata_file=args.metadata,
                 lut_file=args.lut,
                 output_dir=output_dir,
                 k=args.k,
-                min_wavelength=methane_min_wavelength,
-                max_wavelength=methane_max_wavelength,
+                min_wavelength=args.min_wavelength,
+                max_wavelength=args.max_wavelength,
                 mf_mode=args.enmap_mf_mode,
                 snr_reference_path=args.snr_reference,
+                gas=args.gas,
             )
         else:
             if not args.root_directory:
@@ -248,10 +245,11 @@ def main(argv=None):
                 root_dir=args.root_directory,
                 lut_file=args.lut,
                 k=args.k,
-                min_wavelength=methane_min_wavelength,
-                max_wavelength=methane_max_wavelength,
+                min_wavelength=args.min_wavelength,
+                max_wavelength=args.max_wavelength,
                 mf_mode=args.enmap_mf_mode,
                 snr_reference_path=args.snr_reference,
+                gas=args.gas,
             )
     else:  # tanager
         if args.mode != "scene":

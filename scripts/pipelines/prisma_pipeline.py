@@ -20,25 +20,30 @@ from scripts.satellites import prisma_utils  # type: ignore
 logger = logging.getLogger(__name__)
 
 
-def ch4_detection(
+def detection_prisma(
     L1_file,
     L2C_file,
     dem_file,
     lut_file,
     output_dir,
-    min_wavelength=2100.0,
-    max_wavelength=2450.0,
+    min_wavelength: float | None = None,
+    max_wavelength: float | None = None,
     k=1,
     mf_mode: str = "srf-column",
     save_rads: bool = False,
     snr_reference_path: str | None = None,
     advanced_mf_options: dict | None = None,
     output_name_suffix: str | None = None,
+    gas: str = "ch4",
 ):
 
     # Ensure output directory exists
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    gas, min_wavelength, max_wavelength, concentrations = lut.resolve_gas_settings(
+        gas, min_wavelength, max_wavelength
+    )
+    logger.info("Gas: %s; spectral window: %.1f-%.1f nm", gas.upper(), min_wavelength, max_wavelength)
     with contextlib.ExitStack() as cleanup_stack:
 
         def _prepare_prisma_path(path: str) -> str:
@@ -117,12 +122,14 @@ def ch4_detection(
         # Extract the file name without the extension for output files
         _, full_filename = os.path.split(L1_path)
         filename_without_extension = os.path.splitext(full_filename)[0]
+        if gas != "ch4" and output_name_suffix is None:
+            output_name_suffix = gas
         if output_name_suffix:
             filename_without_extension = f"{filename_without_extension}_{output_name_suffix}"
 
         # Define output filenames in the specified output directory
         target_spectra_export_name = os.path.join(
-            output_dir, f"{filename_without_extension}_CH4_target_PRISMA_conv.npy"
+            output_dir, f"{filename_without_extension}_{gas.upper()}_target_PRISMA_conv.npy"
         )
         mf_output_file = os.path.join(output_dir, f"{filename_without_extension}_MF.tif")
         concentration_output_file = os.path.join(output_dir, f"{filename_without_extension}_MF_concentration.tif")
@@ -150,7 +157,6 @@ def ch4_detection(
             rads_array.shape[:2],
             rads_array.shape[2],
         )
-
         # Compute mean central wavelengths per band
         mean_cw = np.mean(cw_array, axis=0)
         mean_fwhm = np.mean(fwhm_array, axis=0)
@@ -173,13 +179,18 @@ def ch4_detection(
         mean_fwhm_subselection = mean_fwhm[band_indices]
 
         # Target spectrum calculation (shared across MF modes)
-        concentrations = [0.0, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
-
         ground_km = lut.normalize_ground_km(mean_elevation)
         water_gcm2 = lut.normalize_wv_gcm2(meanWV)
 
         simRads_array, simWave_array = lut.generate_library(
-            concentrations, lut_file, zenith=SZA, sensor=120, ground=ground_km, water=water_gcm2, order=1
+            concentrations,
+            lut_file,
+            zenith=SZA,
+            sensor=120,
+            ground=ground_km,
+            water=water_gcm2,
+            order=1,
+            gas=gas,
         )
 
         logger.info("Simulated radiance spectra generated for %d concentration levels", len(concentrations))
@@ -371,21 +382,29 @@ def ch4_detection(
             min_wavelength=min_wavelength,
             max_wavelength=max_wavelength,
             sensitivity_output_file=sensitivity_output_file if mf_mode == "jpl" else None,
+            gas=gas,
         )
+
+
+def ch4_detection(*args, **kwargs):
+    """Backward-compatible methane-only entry point."""
+    kwargs.setdefault("gas", "ch4")
+    return detection_prisma(*args, **kwargs)
 
 
 def process_directory(
     root_dir,
     dem_file,
     lut_file,
-    min_wavelength,
-    max_wavelength,
-    k,
+    min_wavelength: float | None = None,
+    max_wavelength: float | None = None,
+    k=1,
     mf_mode: str = "srf-column",
     output_root_dir=None,
     save_rads=False,
     snr_reference_path: str | None = None,
     advanced_mf_options: dict | None = None,
+    gas: str = "ch4",
 ):
     """
     Batch processing wrapper that mirrors the behavior of the original script
@@ -434,7 +453,7 @@ def process_directory(
             if L1_date == L2C_date:
                 os.makedirs(output_dir, exist_ok=True)
                 try:
-                    ch4_detection(
+                    detection_prisma(
                         L1_file,
                         L2C_file,
                         dem_file,
@@ -446,6 +465,7 @@ def process_directory(
                         mf_mode=mf_mode,
                         save_rads=save_rads,
                         snr_reference_path=snr_reference_path,
+                        gas=gas,
                     )
                     status = "Success"
                     details = "Processed successfully (direct HE5 files)"
@@ -478,7 +498,7 @@ def process_directory(
                 if L1_file and L2C_file:
                     os.makedirs(output_dir, exist_ok=True)
                     try:
-                        ch4_detection(
+                        detection_prisma(
                             L1_file,
                             L2C_file,
                             dem_file,
@@ -490,6 +510,7 @@ def process_directory(
                             mf_mode=mf_mode,
                             save_rads=save_rads,
                             snr_reference_path=snr_reference_path,
+                            gas=gas,
                         )
                         status = "Success"
                         details = "Processed successfully from extracted zip files"

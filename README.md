@@ -1,12 +1,18 @@
 # HyGAS (Hyperspectral Gas Analysis Suite)
 
 <p align="center">
-  <img src="GA_repo_fixed.JPG" alt="HyGAS framework schematic" width="700" />
+  <img src="logo/hygas_logo.png" alt="HyGAS logo" width="260" />
 </p>
 
 HyGAS is an open-source framework for analysing gas plumes from imaging spectroscopy. Its published, validated workflow is for **methane (CH₄)**: it retrieves path-integrated enhancements (ΔX, **ppm·m**) from Level-1 radiances, characterises uncertainty, and supports consistent plume segmentation, Integrated Mass Enhancement (IME), and flux analysis across multiple satellite products.
 
-The graphical abstract above is the published visual summary of the HyGAS CH₄ framework. The repository also contains an **experimental Tanager-1 CO₂ retrieval**; its scope and current limitations are stated explicitly below.
+The repository also contains an **experimental CO₂ retrieval path for PRISMA, EnMAP, and Tanager-1**. Its scope and current limitations are stated explicitly below.
+
+<p align="center">
+  <img src="GA_repo_fixed.JPG" alt="Published HyGAS CH₄ framework graphical abstract" width="700" />
+</p>
+
+The graphical abstract above is the published visual summary of the HyGAS CH₄ framework.
 
 ## What HyGAS supports
 
@@ -17,7 +23,9 @@ The graphical abstract above is the published visual summary of the HyGAS CH₄ 
 | Tanager-1 Basic radiance + surface reflectance | CH₄ | CLI, scene | ΔX, `σ_RMN`, class map, RGB | Yes, through analysis notebooks | Published workflow |
 | EMIT Level-2B CH₄ enhancement | CH₄ | Analysis notebooks | Provider ΔX and uncertainty are ingested | Yes | Published downstream workflow |
 | GHGSat Level-2 CH₄ product | CH₄ | Analysis notebooks | Provider ΔX and uncertainty are ingested | Yes | Published downstream workflow |
-| Tanager-1 Basic radiance + surface reflectance | CO₂ | CLI, scene | ΔX, `σ_RMN`, class map, RGB | **No** | Experimental retrieval path |
+| PRISMA Level-1 + L2C | CO₂ | CLI, scene or batch | ΔX, `σ_RMN`, class map, RGB | Segmentation QA notebooks only | Experimental retrieval path |
+| EnMAP Level-1B radiances | CO₂ | CLI, scene or batch | ΔX, `σ_RMN`, class map, RGB | Segmentation QA notebooks only | Experimental retrieval path |
+| Tanager-1 Basic radiance + surface reflectance | CO₂ | CLI, scene | ΔX, `σ_RMN`, class map, RGB | Segmentation QA notebooks only | Experimental retrieval path |
 
 `σ_RMN` is propagated instrument-noise uncertainty. The background/clutter term (`σ_surf`), total uncertainty (`σ_tot`), segmentation, IME, and flux steps are the **downstream scientific-analysis workflow** used by the case-study notebooks; they are not produced by the retrieval CLI alone.
 
@@ -137,7 +145,35 @@ python scripts/main.py \
 
 The default CH₄ window is 2100–2450 nm. Use `--min-wavelength` and `--max-wavelength` to override it.
 
-### CO₂: Tanager single scene
+### CO₂: EnMAP single scene
+
+```bash
+python scripts/main.py \
+  --satellite enmap --mode scene --gas co2 \
+  --vnir /path/to/...-SPECTRAL_IMAGE_VNIR.TIF \
+  --swir /path/to/...-SPECTRAL_IMAGE_SWIR.TIF \
+  --metadata /path/to/...-METADATA.XML \
+  --lut /path/to/dataset_co2_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --output /path/to/output_dir \
+  --enmap-mf-mode full-column
+```
+
+### CO₂: PRISMA single scene
+
+```bash
+python scripts/main.py \
+  --satellite prisma --mode scene --gas co2 \
+  --l1 /path/to/PRS_L1_STD_OFFL_YYYYMMDDhhmmss_xxxx.he5 \
+  --l2c /path/to/PRS_L2C_STD_YYYYMMDDhhmmss_xxxx.he5 \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_co2_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz \
+  --output /path/to/output_dir \
+  --prisma-mf-mode full-column
+```
+
+### CO₂: Tanager-1 single scene
 
 ```bash
 python scripts/main.py \
@@ -205,6 +241,15 @@ python scripts/main.py \
 
 Each EnMAP scene directory must contain its VNIR and SWIR GeoTIFFs and `METADATA.XML`. Scene mode is shown in the quick-start example above.
 
+For case studies organised as EnMAP Level-1B ZIP archives, `scripts/run_enmap_borger2025_co2.py` selects the newest archive revision per acquisition and resumes from `co2_batch_manifest.json`:
+
+```bash
+python scripts/run_enmap_borger2025_co2.py \
+  --root /path/to/enmap_case_studies \
+  --lut /path/to/dataset_co2_full.hdf5 \
+  --snr-reference /path/to/snr_reference_columnwise.npz
+```
+
 ### Tanager-1 CH₄
 
 ```bash
@@ -236,7 +281,7 @@ PRISMA batch runs also create a `directory_process_report_<timestamp>.txt` summa
 
 ### CO₂ limitations
 
-The CO₂ implementation is limited to Tanager scene retrieval. It creates the same four basic retrieval outputs (ΔX, `σ_RMN`, classification, RGB), but currently does **not** implement CO₂ background-clutter quantification, `σ_tot`, scale-aware segmentation, IME, flux, or validation against an independent CO₂ reference. Do not treat its output as a quantitatively validated CO₂ plume product.
+The experimental CO₂ path is implemented for PRISMA, EnMAP, and Tanager-1 and creates the same four basic retrieval outputs (ΔX, `σ_RMN`, classification, RGB). The CO₂ notebooks provide full-scene segmentation quality assurance and reviewed plume masks, but the repository does **not** yet implement CO₂ background-clutter quantification, `σ_tot`, IME, flux, or validation against an independent CO₂ reference. Do not treat the outputs as quantitatively validated CO₂ plume products.
 
 ## Notebooks and examples
 
@@ -248,6 +293,7 @@ The paper notebook index is in [notebooks/README.md](notebooks/README.md). Usefu
 - [Spectrally matched background selection](notebooks/plume_analysis_enmap.ipynb)
 - [PRISMA, EnMAP, and Tanager SNR experiments](notebooks/SNR_experiments_prisma.ipynb), [EnMAP](notebooks/SNR_experiments_enmap.ipynb), and [Tanager](notebooks/SNR_experiments_tanager.ipynb)
 - [Cross-sensor SNR comparison](notebooks/tanager_prisma_enmap_SNR_comparison.ipynb) and [striping diagnostics](notebooks/striping_sweep_diagnostics_cal_scenes_triple.ipynb)
+- [CO₂ segmentation and quality assurance](notebooks/co2_plume_segmentation.ipynb) and [CO₂ retrieval showcase](notebooks/co2_retrieval_showcase.ipynb)
 
 Notebook outputs are deliberately excluded from version control. When adding a new README example figure, create a clean, captioned, unit-checked derivative under `docs/assets/` rather than linking directly to `notebooks/outputs/`.
 

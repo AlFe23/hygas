@@ -25,6 +25,7 @@ def generate_prisma_report(
     min_wavelength,
     max_wavelength,
     sensitivity_output_file=None,
+    gas="ch4",
 ):
     """
     Genera un report di elaborazione nella cartella di output, contenente i dettagli dei file di input e output, e i principali parametri calcolati.
@@ -82,6 +83,7 @@ def generate_prisma_report(
 
     report_content += f"""
     Processing Parameters:
+    - Target Gas: {gas.upper()}
     - Mean Water Vapor: {meanWV} g/cm^2
     - Solar Zenith Angle: {SZA} degrees
     - Mean Elevation: {mean_elevation} km
@@ -116,6 +118,7 @@ def generate_enmap_report(
     target_spectra_file,
     mf_mode,
     sensitivity_output_file=None,
+    gas="ch4",
 ):
     """Create an EnMAP-specific processing report mirroring the PRISMA flow."""
 
@@ -151,6 +154,7 @@ def generate_enmap_report(
 
     report_content += f"""
     Processing Parameters:
+    - Target Gas: {gas.upper()}
     - Mean Water Vapor: {mean_wv} g/cm^2
     - Solar Zenith Angle: {SZA} degrees
     - Mean Elevation: {mean_elevation_km} km

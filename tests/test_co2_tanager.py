@@ -1,9 +1,10 @@
-"""Unit tests for the gas-aware Tanager CO2 matched-filter path."""
+"""Unit tests for gas-aware methane and carbon-dioxide processing."""
 
 from __future__ import annotations
 
 import tempfile
 import unittest
+import inspect
 from pathlib import Path
 
 import h5py
@@ -11,6 +12,7 @@ import numpy as np
 
 from scripts.core import lut
 from scripts.main import build_parser
+from scripts.pipelines import enmap_pipeline, prisma_pipeline
 from scripts.pipelines.tanager_pipeline import resolve_gas_settings
 
 
@@ -46,11 +48,26 @@ class TanagerCarbonDioxideConfigTests(unittest.TestCase):
         self.assertEqual((min_wavelength, max_wavelength), (2100.0, 2450.0))
         np.testing.assert_allclose(concentrations, lut.default_concentrations("ch4"))
 
-    def test_cli_exposes_tanager_co2(self):
-        args = build_parser().parse_args(["--satellite", "tanager", "--lut", "co2_lut.h5", "--gas", "co2"])
-        self.assertEqual(args.gas, "co2")
-        self.assertIsNone(args.min_wavelength)
-        self.assertIsNone(args.max_wavelength)
+    def test_cli_exposes_co2_for_all_satellites(self):
+        for satellite in ("tanager", "prisma", "enmap"):
+            args = build_parser().parse_args(["--satellite", satellite, "--lut", "co2_lut.h5", "--gas", "co2"])
+            self.assertEqual(args.gas, "co2")
+            self.assertIsNone(args.min_wavelength)
+            self.assertIsNone(args.max_wavelength)
+
+
+class PrismaAndEnmapCarbonDioxideConfigTests(unittest.TestCase):
+    def test_shared_co2_defaults_apply_to_all_satellites(self):
+        gas, min_wavelength, max_wavelength, concentrations = lut.resolve_gas_settings("co2", None, None)
+        self.assertEqual(gas, "co2")
+        self.assertEqual((min_wavelength, max_wavelength), (1900.0, 2100.0))
+        np.testing.assert_allclose(concentrations, lut.default_concentrations("co2"))
+
+    def test_prisma_and_enmap_accept_a_gas_parameter(self):
+        self.assertIn("gas", inspect.signature(prisma_pipeline.detection_prisma).parameters)
+        self.assertIn("gas", inspect.signature(enmap_pipeline.detection_enmap).parameters)
+        self.assertIn("gas", inspect.signature(prisma_pipeline.process_directory).parameters)
+        self.assertIn("gas", inspect.signature(enmap_pipeline.process_directory_enmap).parameters)
 
 
 if __name__ == "__main__":

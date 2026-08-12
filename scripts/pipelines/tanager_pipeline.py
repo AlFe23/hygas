@@ -20,25 +20,13 @@ from scripts.satellites import tanager_utils  # type: ignore
 
 logger = logging.getLogger(__name__)
 
-GAS_DEFAULT_WINDOWS = {
-    "ch4": (2100.0, 2450.0),
-    "co2": (1900.0, 2100.0),
-}
-
-
 def resolve_gas_settings(
     gas: str,
     min_wavelength: float | None,
     max_wavelength: float | None,
 ) -> tuple[str, float, float, np.ndarray]:
-    """Resolve gas defaults while allowing an explicit spectral-window override."""
-    gas = lut.normalize_gas(gas)
-    default_min, default_max = GAS_DEFAULT_WINDOWS[gas]
-    min_wavelength = default_min if min_wavelength is None else float(min_wavelength)
-    max_wavelength = default_max if max_wavelength is None else float(max_wavelength)
-    if min_wavelength >= max_wavelength:
-        raise ValueError("min_wavelength must be lower than max_wavelength.")
-    return gas, min_wavelength, max_wavelength, lut.default_concentrations(gas)
+    """Backward-compatible access to the shared gas configuration."""
+    return lut.resolve_gas_settings(gas, min_wavelength, max_wavelength)
 
 
 def _scene_stats(rad_path: str, sr_path: str) -> tuple[float, float]:

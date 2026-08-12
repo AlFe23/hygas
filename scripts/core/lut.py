@@ -15,6 +15,11 @@ GAS_CONCENTRATIONS = {
     "co2": (0.0, 20000.0, 40000.0, 80000.0, 160000.0, 320000.0, 640000.0, 1280000.0),
 }
 
+GAS_DEFAULT_WINDOWS = {
+    "ch4": (2100.0, 2450.0),
+    "co2": (1900.0, 2100.0),
+}
+
 
 def normalize_gas(gas: str) -> str:
     """Return a supported lower-case gas identifier."""
@@ -27,6 +32,21 @@ def normalize_gas(gas: str) -> str:
 def default_concentrations(gas: str) -> np.ndarray:
     """Return the MODTRAN enhancement levels available for a supported gas LUT."""
     return np.asarray(GAS_CONCENTRATIONS[normalize_gas(gas)], dtype=float)
+
+
+def resolve_gas_settings(
+    gas: str,
+    min_wavelength: float | None,
+    max_wavelength: float | None,
+) -> tuple[str, float, float, np.ndarray]:
+    """Resolve a gas-specific spectral window and LUT concentration grid."""
+    gas = normalize_gas(gas)
+    default_min, default_max = GAS_DEFAULT_WINDOWS[gas]
+    min_wavelength = default_min if min_wavelength is None else float(min_wavelength)
+    max_wavelength = default_max if max_wavelength is None else float(max_wavelength)
+    if min_wavelength >= max_wavelength:
+        raise ValueError("min_wavelength must be lower than max_wavelength.")
+    return gas, min_wavelength, max_wavelength, default_concentrations(gas)
 
 
 def mean_elev_from_dem(dem_file: str, bbox: tuple) -> float:

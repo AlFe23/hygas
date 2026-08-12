@@ -18,24 +18,29 @@ from scripts.satellites import enmap_utils  # type: ignore
 logger = logging.getLogger(__name__)
 
 
-def ch4_detection_enmap(
+def detection_enmap(
     vnir_file,
     swir_file,
     metadata_file,
     lut_file,
     output_dir,
     k=10,
-    min_wavelength=2100.0,
-    max_wavelength=2450.0,
+    min_wavelength: float | None = None,
+    max_wavelength: float | None = None,
     snr_reference_path: str | None = None,
     mf_mode: str = "srf-column",
     advanced_mf_options: dict | None = None,
     output_name_suffix: str | None = None,
+    gas: str = "ch4",
 ):
     # Ensure output directory exists
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    gas, min_wavelength, max_wavelength, concentrations = lut.resolve_gas_settings(
+        gas, min_wavelength, max_wavelength
+    )
     logger.info("EnMAP scene: %s", vnir_file)
+    logger.info("Gas: %s; spectral window: %.1f-%.1f nm", gas.upper(), min_wavelength, max_wavelength)
 
     # Read SZA, meanWV, and mean_ground_elevation from EnMAP metadata
     SZA, meanWV, mean_ground_elevation = enmap_utils.enmap_metadata_read(metadata_file)
@@ -113,10 +118,12 @@ def ch4_detection_enmap(
         )
 
     output_basename = enmap_utils.derive_basename_from_metadata(metadata_file)
+    if gas != "ch4" and output_name_suffix is None:
+        output_name_suffix = gas
     if output_name_suffix:
         output_basename = f"{output_basename}_{output_name_suffix}"
 
-    target_spectra_export_name = os.path.join(output_dir, f"{output_basename}_CH4_target.npy")
+    target_spectra_export_name = os.path.join(output_dir, f"{output_basename}_{gas.upper()}_target.npy")
     concentration_output_file = os.path.join(output_dir, f"{output_basename}_MF.tif")
     uncertainty_output_file = os.path.join(output_dir, f"{output_basename}_MF_uncertainty.tif")
     sensitivity_output_file = os.path.join(output_dir, f"{output_basename}_MF_sensitivity.tif")
@@ -145,11 +152,17 @@ def ch4_detection_enmap(
     cw_subselection = cw_array[band_indices]
     fwhm_subselection = fwhm_array[band_indices]
 
-    concentrations = [0.0, 1000, 2000, 4000, 8000, 16000, 32000, 64000]
     ground_km = lut.normalize_ground_km(mean_elevation_km)
     water_gcm2 = lut.normalize_wv_gcm2(meanWV)
     simRads_array, simWave_array = lut.generate_library(
-        concentrations, lut_file, zenith=SZA, sensor=120, ground=ground_km, water=water_gcm2, order=1
+        concentrations,
+        lut_file,
+        zenith=SZA,
+        sensor=120,
+        ground=ground_km,
+        water=water_gcm2,
+        order=1,
+        gas=gas,
     )
     logger.info("Simulated radiance spectra generated for %d concentration levels", len(concentrations))
 
@@ -311,17 +324,25 @@ def ch4_detection_enmap(
         uncertainty_output_file=uncertainty_output_file,
         mf_mode=mf_mode,
         sensitivity_output_file=sensitivity_output_file if mf_mode == "jpl" else None,
+        gas=gas,
     )
+
+
+def ch4_detection_enmap(*args, **kwargs):
+    """Backward-compatible methane-only entry point."""
+    kwargs.setdefault("gas", "ch4")
+    return detection_enmap(*args, **kwargs)
 
 
 def process_directory_enmap(
     root_dir,
     lut_file,
     k=1,
-    min_wavelength=2100.0,
-    max_wavelength=2450.0,
+    min_wavelength: float | None = None,
+    max_wavelength: float | None = None,
     mf_mode: str = "srf-column",
     snr_reference_path: str | None = None,
+    gas: str = "ch4",
 ):
     """
     Batch driver for EnMAP directories, mirroring the legacy implementation.
@@ -350,7 +371,7 @@ def process_directory_enmap(
             output_basename = enmap_utils.derive_output_basename(vnir_file)
             os.makedirs(output_dir, exist_ok=True)
             try:
-                ch4_detection_enmap(
+                detection_enmap(
                     vnir_file,
                     swir_file,
                     metadata_file,
@@ -361,6 +382,7 @@ def process_directory_enmap(
                     max_wavelength=max_wavelength,
                     mf_mode=mf_mode,
                     snr_reference_path=snr_reference_path,
+                    gas=gas,
                 )
                 status = "Success"
                 details = f"Processed successfully: {output_basename}"

@@ -77,6 +77,8 @@ These notebooks are useful when working on one sensor at a time (often supersede
 
 ## Additional case-study notebooks (not used in the paper)
 
+- `notebooks/co2_plume_segmentation.ipynb`: full-scene robust segmentation and QA for the Korba Tanager-1/EnMAP and Borger et al. EnMAP CO₂ cases; configure the `CASE_STUDIES_CO2_ROOT` path before use. Exports masks and reviewed plume polygons only (no CO₂ IME/flux yet).
+- `notebooks/co2_retrieval_showcase.ipynb`: exports presentation-ready CO₂ retrieval figures using manually reviewed plume GeoJSON masks, together with clipped MF and uncertainty products; configure `CASE_STUDIES_CO2_ROOT` before use.
 - `notebooks/PRISMA_HassiMessaoud_plume_detection_scaled.ipynb`: PRISMA case study (Hassi Messaoud).
 - `notebooks/PRISMA_HassiMessaoud_plume_analysis_prisma.ipynb`: PRISMA case study analysis (Hassi Messaoud).
 - `notebooks/Tanager_HoChiMin_plume_detection_single_MF.ipynb`: Tanager case study (Ho Chi Minh).
