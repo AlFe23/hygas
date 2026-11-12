@@ -6,7 +6,7 @@
 
 HyGAS is an open-source framework for analysing gas plumes from imaging spectroscopy. Its published, validated workflow is for **methane (CH₄)**: it retrieves path-integrated enhancements (ΔX, **ppm·m**) from Level-1 radiances, characterises uncertainty, and supports consistent plume segmentation, Integrated Mass Enhancement (IME), and flux analysis across multiple satellite products.
 
-The repository also contains an **experimental CO₂ retrieval path for PRISMA, EnMAP, and Tanager-1**. Its scope and current limitations are stated explicitly below.
+The repository also contains an **experimental CO₂ retrieval path for PRISMA, EnMAP, Tanager-1, and EMIT**, and an experimental EMIT Level-1 CH₄ path. Their scope and current limitations are stated explicitly below.
 
 <p align="center">
   <img src="GA_repo_fixed.JPG" alt="Published HyGAS CH₄ framework graphical abstract" width="700" />
@@ -22,6 +22,7 @@ The graphical abstract above is the published visual summary of the HyGAS CH₄ 
 | EnMAP Level-1B radiances | CH₄ | CLI, scene or batch | ΔX, `σ_RMN`, class map, RGB | Yes, through analysis notebooks | Published workflow |
 | Tanager-1 Basic radiance + surface reflectance | CH₄ | CLI, scene | ΔX, `σ_RMN`, class map, RGB | Yes, through analysis notebooks | Published workflow |
 | EMIT Level-2B CH₄ enhancement | CH₄ | Analysis notebooks | Provider ΔX and uncertainty are ingested | Yes | Published downstream workflow |
+| EMIT Level-1B RAD + OBS + paired L2A MASK atmosphere | CH₄ / CO₂ | CLI, scene or batch | Native ΔX, instrument uncertainty, class/support maps; optional GLT GeoTIFFs | Not yet validated end-to-end | Experimental L1B integration; explicit noise calibration required |
 | GHGSat Level-2 CH₄ product | CH₄ | Analysis notebooks | Provider ΔX and uncertainty are ingested | Yes | Published downstream workflow |
 | PRISMA Level-1 + L2C | CO₂ | CLI, scene or batch | ΔX, `σ_RMN`, class map, RGB | Segmentation QA notebooks only | Experimental retrieval path |
 | EnMAP Level-1B radiances | CO₂ | CLI, scene or batch | ΔX, `σ_RMN`, class map, RGB | Segmentation QA notebooks only | Experimental retrieval path |
@@ -47,21 +48,36 @@ For the complete uncertainty ATBD—noise model, spectrally matched-background s
 
 ### Reference SNR used for `σ_RMN`
 
-The Level-1 uncertainty workflow uses a column-wise reference SNR rather than a single mission-wide number. Each reference is derived from a bright, spatially homogeneous, methane-free desert calibration scene (a Pseudo-Invariant Calibration Site), chosen so that residual spatial variation is dominated by detector behaviour rather than surface structure:
+The Level-1 uncertainty workflow uses a reference for each spectral band and
+detector column. The four selected desert scenes and their **ready-to-use NPZ
+files are included in [reference_snr/](reference_snr/README.md)**, with dates,
+product identifiers, spatial selections, hashes and known limitations in the
+[scene catalog](reference_snr/scenes.json). EMIT uses the experimental full-scene
+Libya-4 acquisition `20240624T091109_2417606_010`.
 
-- **PRISMA:** `L1-20200401T085313`, Northern State, Sudan.
-- **EnMAP:** `L1B-20220712T104302`, near Agadez, Niger.
-- **Tanager-1:** `20250509_090323_87_4001`, Northern State, Sudan; the homogeneous upper 220 image rows are selected before estimating the reference.
+The numerator is mean observed radiance along the selected rows. Random noise
+is estimated from along-track first differences of the **residual after a
+four-component PCA reconstruction**, divided by √2. This is not the standard
+deviation of the fourth component. Reference SNR is mean radiance divided by
+this noise estimate. For positive target-scene radiance, the photon-noise
+approximation scales SNR by `√(L_scene / L_ref)` before propagation through the
+gas target to `σ_RMN`. The same radiometric NPZ supplies CH4 and CO2; only the
+spectral selection and gas target change.
 
-For every spectral band and detector column, HyGAS calculates the mean radiance and uses the standard deviation of the fourth principal component as the measurement-noise estimate. The reference is `SNR_ref(λ,c) = μ(λ,c) / σ_MN(λ,c)`. For a target scene, SNR is scaled column-wise with radiance under the photon-noise approximation, `SNR(λ,c;L) ≈ SNR_ref(λ,c) √(L(λ,c) / L_ref(λ,c))`; the resulting noise covariance is propagated analytically through the matched filter to produce `σ_RMN`.
-
-The reference-generation and sensitivity experiments are reproducible in the [PRISMA](notebooks/SNR_experiments_prisma.ipynb), [EnMAP](notebooks/SNR_experiments_enmap.ipynb), and [Tanager-1](notebooks/SNR_experiments_tanager.ipynb) notebooks. The [Tanager calibration-selection notebook](notebooks/tanager_calibration_selection.ipynb) documents the homogeneous-row selection; [cross-sensor SNR comparison](notebooks/tanager_prisma_enmap_SNR_comparison.ipynb) provides brightness-normalised comparisons. See the reference paper for the complete radiometric-noise ATBD and its limitations.
+[Generation methods and commands](reference_snr/README.md#generate-references)
+distinguish historical notebook writers from A–H sensitivity diagnostics. EMIT
+has a [standalone CLI](scripts/SNR_emit_reference.py) and a
+[short notebook](notebooks/emit_snr_reference.ipynb), with no private-cache
+dependency. The historical Tanager NPZ is unchanged: its recorded 234-row crop
+and native radiance scale differ from the later 220-row calibration analysis and
+common-unit comparison. These pending Tanager reference issues are documented
+in the catalog; they are not silently recalibrated by the EMIT integration.
 
 ## Common HyGAS workflow
 
 HyGAS currently combines **automated retrieval** with **notebook-guided plume analysis**. The CLI is suitable for repeatable single-scene and, where supported, batch retrievals; the final plume masks, total-uncertainty derivation, and IME/flux products are produced through the example notebooks so that image-specific statistics and quality-control choices remain visible and reproducible.
 
-1. **Prepare the input product.** Use a Level-1 radiance product for PRISMA, EnMAP, or Tanager-1, with the required LUT, DEM where applicable, and SNR reference. For EMIT and GHGSat, begin from the provider's Level-2 CH₄ enhancement and uncertainty fields.
+1. **Prepare the input product.** Use a Level-1 radiance product for PRISMA, EnMAP, or Tanager-1, with the required LUT, DEM where applicable, and SNR reference. The experimental EMIT L1B route additionally requires paired OBS and atmospheric H2O from L2A MASK. The published EMIT and GHGSat examples instead begin from provider Level-2 CH₄ enhancement and uncertainty fields.
 2. **Run or ingest the CH₄ retrieval.** Run `scripts/main.py` for Level-1 scenes to create ΔX and `σ_RMN` rasters, or load Level-2 products in the relevant analysis notebook. Select and record the matched-filter configuration; use multiple configurations when assessing retrieval sensitivity.
 3. **Define the analysis domain.** Inspect the enhancement and uncertainty maps. For a multi-sensor comparison, clip every image to the common footprint before calculating segmentation statistics.
 4. **Segment plumes semi-automatically.** In the case-study notebook, choose the threshold multiplier and physical morphology settings. The notebook calculates robust background statistics separately for every clipped image, converts the shared physical settings to each sensor's pixel grid, and creates candidate masks. Review the masks, remove implausible isolated objects, and merge fragments belonging to the same source and wind-aligned plume where needed.
@@ -114,18 +130,96 @@ You will need the following data, as applicable:
 - Tanager Basic radiance and companion surface-reflectance HDF5 products.
 - A CH₄ LUT, `dataset_ch4_full.hdf5`, from the [University of Utah HIVE dataset](https://hive.utah.edu/concern/datasets/9w0323039) (or the [repository mirror](https://drive.google.com/file/d/196adGp_XCcTXAk3SRjiOnBJxUhDANNvn/view?usp=sharing)). Please cite Foote et al., *Impact of Scene-Specific Enhancement Spectra on Matched Filter GreenhouseGas Retrievals from Imaging Spectroscopy*.
 - A DEM NetCDF file for PRISMA and Tanager. It must provide `lat`, `lon`, and `elev` in metres; the [SRTM30 Global 1 km DEM](https://catalog.data.gov/dataset/srtm30-global-1-km-digital-elevation-model-dem-version-11-land-surface) is one suitable source.
-- A column-wise SNR-reference `.npz` for uncertainty propagation. Pass `--snr-reference` or set `PRISMA_SNR_REFERENCE`, `ENMAP_SNR_REFERENCE`, or `TANAGER_SNR_REFERENCE`.
+- A column-wise SNR-reference `.npz` for uncertainty propagation, supplied in [reference_snr/](reference_snr/README.md). Pass `--snr-reference` or set `PRISMA_SNR_REFERENCE`, `ENMAP_SNR_REFERENCE`, `TANAGER_SNR_REFERENCE`, or `EMIT_SNR_REFERENCE`.
+- For experimental EMIT L1B retrievals, exactly paired RAD/OBS NetCDFs and the same-scene, same-version L2A MASK providing atmospheric water vapour.
 - For the CO₂ path only, a compatible `dataset_co2_full.hdf5` LUT with the same `modtran_data`, `modtran_param`, and `wave` structure as the CH₄ LUT.
+
+### Optional EMIT downloads through NASA Earthdata
+
+Acquisition is separate from retrieval. Install the optional dependencies in your
+HyGAS environment (the tested combination pins `earthaccess` to 0.16.0):
+
+```bash
+python -m pip install -r requirements-earthdata.txt
+```
+
+Generate a personal token through [Earthdata Login](https://urs.earthdata.nasa.gov/).
+For persistent configuration, run this once from an interactive terminal:
+
+```bash
+python scripts/configure_earthdata.py
+# Optional: check the local file without showing its contents or contacting NASA.
+python scripts/configure_earthdata.py --check
+```
+
+The prompt hides the token and stores it in `~/.config/hygas/earthdata-token`,
+outside this repository. On WSL/Linux the file is created with mode `600` and
+its new parent directory with mode `700`. The EMIT downloader automatically
+uses it in future terminals. Exported token or username/password credentials take
+precedence; no shell startup file needs changing. Use
+`python scripts/configure_earthdata.py --replace` to update a token.
+
+Alternatively, in Bash/WSL, set a token for the current terminal session only:
+
+```bash
+read -r -s -p "Earthdata token: " EARTHDATA_TOKEN
+printf '\n'
+export EARTHDATA_TOKEN
+```
+
+Use an explicit collection, version, scene and product selection. Public preview
+does not authenticate or create files; remove `--dry-run` to download. For the
+selected SNR scene, first obtain RAD/OBS:
+
+```bash
+python scripts/download_emit.py \
+  --collection EMITL1BRAD --version 001 \
+  --scene 20240624T091109_2417606_010 --products RAD OBS \
+  --output downloads/emit/20240624T091109_2417606_010 --dry-run
+```
+
+For retrieval, also obtain the paired atmospheric MASK:
+
+```bash
+python scripts/download_emit.py \
+  --collection EMITL2ARFL --version 001 \
+  --scene 20240624T091109_2417606_010 --products MASK \
+  --output downloads/emit/20240624T091109_2417606_010 --dry-run
+```
+
+For L1B radiance and geometry, use `--collection EMITL1BRAD --version 001`
+and `--products RAD OBS`. These are native scene NetCDF downloads, not plume
+complex GeoTIFFs. Legacy V001 MASK is part of `EMITL2ARFL`; newer standalone
+`EMITL2AMASK` collections have their own versions. No version pairing or upgrade
+is inferred. Query each collection explicitly.
+
+The downloader uses [earthaccess search and download APIs](https://earthaccess.readthedocs.io/en/v0.16.0/api/).
+It checks NetCDF/HDF5 readability and declared product version (or GeoTIFF readability
+and georeferencing for scene enhancement products), exact file sizes
+and CMR checksums when supplied, and records SHA-256, source identity and receipts.
+Existing files are never overwritten; interrupted downloads remain in `.partial`
+for inspection and are not automatically resumed. Repeated runs verify receipts
+before reusing files. Authentication defaults to environment credentials, falling
+back to the configured local HyGAS token file, with
+`persist=False`; `--auth interactive` and `--auth netrc` require explicit selection.
+No token, password or signed temporary URL is written to the manifests.
+
+Run all commands in the same terminal: exported variables do not automatically
+reach other terminals or an already-running agent. Use `unset EARTHDATA_TOKEN`
+when finished. `downloads/`, local `.env*` and `.netrc` files are excluded from Git;
+Git exclusion is not a substitute for protecting credentials. Downloading EMIT
+L1B data does **not** validate a calibration or establish equivalence to NASA
+operational retrievals. The experimental main-CLI path is described below.
 
 ## Retrieval quick start
 
 All retrievals use the unified entry point:
 
 ```bash
-python scripts/main.py --satellite {prisma|enmap|tanager} --mode {scene|batch} --lut /path/to/lut.hdf5 [options]
+python scripts/main.py --satellite {prisma|enmap|tanager|emit} --mode {scene|batch} --lut /path/to/lut.hdf5 [options]
 ```
 
-Tanager currently supports `--mode scene` only. PRISMA and EnMAP accept both scene and batch modes.
+Tanager currently supports `--mode scene` only. PRISMA, EnMAP and experimental EMIT accept both scene and batch modes.
 
 Common options are `--min-wavelength` / `--max-wavelength` (spectral window), `--k` (cluster count for `srf-column`), `--snr-reference` (or its sensor-specific environment-variable fallback), and `--log-file`. `--save-rads` additionally exports the full PRISMA radiance cube and is intentionally unavailable for the other sensors.
 
@@ -186,6 +280,68 @@ python scripts/main.py \
   --output /path/to/output_dir \
   --tanager-mf-mode full-column
 ```
+
+### Experimental EMIT L1B: CH₄ or CO₂
+
+```bash
+python scripts/main.py \
+  --satellite emit --mode scene --gas ch4 \
+  --emit-rad /path/to/EMIT_L1B_RAD_001_20240112T185917_2401212_016.nc \
+  --emit-obs /path/to/EMIT_L1B_OBS_001_20240112T185917_2401212_016.nc \
+  --emit-atmosphere /path/to/EMIT_L2A_MASK_001_20240112T185917_2401212_016.nc \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference reference_snr/emit/20240624T091109_2417606_010/snr_reference_columnwise_experimental.npz \
+  --emit-mf-mode full-column \
+  --output /path/to/new_output
+```
+
+For CO₂, use `--gas co2` and its own compatible CO₂ LUT. Default windows are
+2100–2450nm (CH₄) and 1900–2100nm (CO₂), as for the other sensors. The paired
+L2A MASK supplies **only atmospheric H2O**, identified by its explicit g/cm² label;
+its cloud, Aggregate, AOD and band-interpolation exclusion rules are not applied.
+Native dimensions, identity and selected lat/lon must agree exactly. Solar
+zenith comes from OBS; mean ground altitude comes from RAD elevation.
+
+The supplied reference contains some nonpositive cells in the default CO₂
+window; affected column uncertainties remain unavailable. The four-sensor CO₂
+experiment explicitly used `--min-wavelength 1920 --max-wavelength 2100` for all
+sensors. This narrower choice is documented in the [EMIT reference notes](reference_snr/emit/20240624T091109_2417606_010/README.md)
+and is not silently applied to other runs.
+
+The EMIT choices are deliberately distinct:
+
+- `--emit-mf-mode {srf-column,full-column,advanced,jpl}` selects the existing
+  shared MF implementation. Nominal 1D wavelength/FWHM is used; no unprovided
+  across-track smile calibration is invented.
+- `--emit-noise-backend snr-reference` (default) requires an explicit reference
+  or `EMIT_SNR_REFERENCE`. Bands are selected by native ID and columns by physical
+  detector index, including crops. No column interpolation or gap filling occurs.
+  References must document EMIT, radiance units, full native columns and no
+  interpolation. Unsupported/nonpositive reference cells make uncertainty
+  unavailable for the affected pixels, without automatically masking enhancement.
+- Alternatively, `--emit-noise-backend jpl-parametric --emit-noise-parameters
+  /path/to/emit_noise.txt` uses the explicit wavelength/a/b/c EMIT noise model
+  in native radiance units, independently of the MF choice. Do not also provide
+  an SNR reference. Calibration applicability to a particular build/epoch is
+  not established by selecting the file; no wavelength extrapolation is performed.
+- `--emit-uncertainty-method hygas` (default, including with JPL MF) retains the
+  shared per-pixel HyGAS formula and existing numerical guards. Choosing `jpl`
+  instead requires JPL MF and uses its current covariance-weighted adaptation.
+  Neither JPL option asserts full numerical parity with the operational pipeline.
+
+Native windows `--emit-rows START STOP` and `--emit-columns START STOP` are
+zero-based, contiguous and stop-exclusive. `--emit-native-only` skips GLT export.
+Outputs contain native NPZ maps/indices/target/geolocation/support and a JSON
+report with input/output/source hashes, atmosphere, noise method, numerical
+guards and effective configuration. Default GeoTIFFs have explicit `_ortho`
+names and use the original 1-based full-scene GLT/CRS/geotransform; crop-external
+pixels stay nodata. Native data are never presented as already orthorectified.
+No RGB quicklook or total plume/flux uncertainty is generated by this route yet.
+Existing scene outputs are not overwritten.
+
+EMIT batch mode requires `--root-directory` and `--output-root`. Each RAD must
+have exactly one same-version OBS and MASK companion below the input root;
+duplicate scenes or incomplete pairings are rejected before retrievals start.
 
 CO₂ defaults to 1900–2100 nm. This path has been exercised on the Tanager-1 Korba/Kusmunda scene (`20250219_053251_31_4001`) with 40 selected bands, but it is an engineering test of data loading, target synthesis, uncertainty propagation, and export—not a validation of CO₂ plume detection or retrieved magnitude.
 
@@ -266,7 +422,7 @@ python scripts/main.py \
 
 ## Retrieval outputs and scope
 
-Each CLI retrieval writes sensor-specific GeoTIFF names under the output directory:
+PRISMA, EnMAP and Tanager CLI retrievals write sensor-specific GeoTIFF names under the output directory (experimental EMIT uses the explicit native/ortho convention described above):
 
 | Output | Meaning |
 | --- | --- |
@@ -281,7 +437,7 @@ PRISMA batch runs also create a `directory_process_report_<timestamp>.txt` summa
 
 ### CO₂ limitations
 
-The experimental CO₂ path is implemented for PRISMA, EnMAP, and Tanager-1 and creates the same four basic retrieval outputs (ΔX, `σ_RMN`, classification, RGB). The CO₂ notebooks provide full-scene segmentation quality assurance and reviewed plume masks, but the repository does **not** yet implement CO₂ background-clutter quantification, `σ_tot`, IME, flux, or validation against an independent CO₂ reference. Do not treat the outputs as quantitatively validated CO₂ plume products.
+The experimental CO₂ path is implemented for PRISMA, EnMAP, Tanager-1 and EMIT. The first three create the same four basic retrieval outputs (ΔX, `σ_RMN`, classification, RGB); EMIT currently exports enhancement, instrument uncertainty and native/ortho support maps, without RGB. The CO₂ notebooks provide full-scene segmentation quality assurance and reviewed plume masks, but the repository does **not** yet implement CO₂ background-clutter quantification, `σ_tot`, IME, flux, or validation against an independent CO₂ reference. Do not treat the outputs as quantitatively validated CO₂ plume products.
 
 ## Notebooks and examples
 

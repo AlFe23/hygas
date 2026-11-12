@@ -1,0 +1,5 @@
+# Optional acquisition only; never needed to import/run the retrieval pipelines.
+earthaccess==0.16.0
+# Match the fsspec generation already used in the validated hygasMF environment.
+s3fs==2025.9.0
+fsspec==2025.9.0
