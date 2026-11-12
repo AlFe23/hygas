@@ -564,6 +564,33 @@ class ColumnwiseSNRReference:
             metadata=self.metadata,
         )
 
+    def subset_native_columns(
+        self, column_indices: Sequence[int], *, native_column_count: int,
+    ) -> "ColumnwiseSNRReference":
+        """Select physical detector columns, without resizing or filling gaps.
+
+        Requires a full-width reference. ``valid_columns`` in the returned
+        reference addresses its local column axis; missing support remains NaN.
+        This opt-in method does not change legacy ``ensure_column_count``.
+        """
+        ids = np.asarray(column_indices)
+        if (ids.ndim != 1 or not ids.size or ids.dtype.kind not in "iu"
+                or np.unique(ids).size != ids.size
+                or np.any(ids < 0) or np.any(ids >= native_column_count)):
+            raise ValueError("Native column indices must be unique integers within the detector.")
+        if self.mean_radiance.shape[1] != native_column_count:
+            raise ValueError("Native selection requires a full-width reference; resizing is forbidden.")
+        valid = np.flatnonzero(np.isin(ids, self.valid_columns))
+        mu = self.mean_radiance[:, ids].copy()
+        snr = self.snr[:, ids].copy()
+        absent = ~np.isin(np.arange(ids.size), valid)
+        mu[:, absent] = np.nan
+        snr[:, absent] = np.nan
+        return ColumnwiseSNRReference(
+            band_nm=self.band_nm, mean_radiance=mu, snr=snr,
+            valid_columns=valid, metadata=self.metadata, band_indices=self.band_indices,
+        )
+
     def save(self, path: str | Path) -> None:
         """Persist the reference dataset to disk as a compressed NPZ archive."""
 

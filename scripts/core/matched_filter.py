@@ -12,7 +12,7 @@ from sklearn.cluster import KMeans
 logger = logging.getLogger(__name__)
 
 
-def k_means_hyperspectral(image, k):
+def k_means_hyperspectral(image, k, random_state=None):
     """
 
     Per eseguire una classificazione non supervisionata utilizzando il metodo K-means su un'immagine iperspettrale, dovrai seguire alcuni passaggi chiave. Prima di tutto, avrai bisogno dell'immagine iperspettrale e della scelta del numero di cluster (K) per il K-means. Gli step includono:
@@ -46,7 +46,7 @@ def k_means_hyperspectral(image, k):
     reshaped_image = image.reshape((n_righe * n_colonne, n_bande))
 
     # Applica il K-means clustering
-    kmeans = KMeans(n_clusters=k, n_init=10)
+    kmeans = KMeans(n_clusters=k, n_init=10, random_state=random_state)
     kmeans.fit(reshaped_image)
 
     # Ottieni le etichette dei cluster e rimodella per l'immagine classificata

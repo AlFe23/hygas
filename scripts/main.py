@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unified entry point for PRISMA, EnMAP, and Tanager matched-filter processing."""
+"""Unified entry point for PRISMA, EnMAP, Tanager and experimental EMIT retrievals."""
 
 import argparse
 import logging
@@ -11,17 +11,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.pipelines import prisma_pipeline, enmap_pipeline, tanager_pipeline  # type: ignore
+from scripts.pipelines import prisma_pipeline, enmap_pipeline, tanager_pipeline, emit_pipeline  # type: ignore
 from scripts.satellites import prisma_utils, tanager_utils  # type: ignore
 
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Greenhouse-gas matched-filter processing for PRISMA, EnMAP, and Tanager scenes."
+        description="Greenhouse-gas matched-filter processing for PRISMA, EnMAP, Tanager and EMIT scenes."
     )
     parser.add_argument(
         "--satellite",
-        choices=["prisma", "enmap", "tanager"],
+        choices=["prisma", "enmap", "tanager", "emit"],
         required=True,
         help="Satellite to process.",
     )
@@ -41,7 +41,8 @@ def build_parser():
         "--snr-reference",
         help=(
             "Path to the columnwise SNR reference .npz used for uncertainty propagation "
-            "and JPL MF. Falls back to PRISMA_SNR_REFERENCE / ENMAP_SNR_REFERENCE / TANAGER_SNR_REFERENCE env vars."
+            "and JPL MF. Falls back to PRISMA_SNR_REFERENCE / ENMAP_SNR_REFERENCE / "
+            "TANAGER_SNR_REFERENCE / EMIT_SNR_REFERENCE env vars."
         ),
     )
     parser.add_argument(
@@ -114,6 +115,19 @@ def build_parser():
         default="ch4",
         help="Target gas for all supported satellites.",
     )
+
+    # EMIT inputs retain native detector coordinates until the final GLT lookup.
+    parser.add_argument("--emit-rad", help="Canonical EMIT L1B RAD NetCDF.")
+    parser.add_argument("--emit-obs", help="Exactly paired EMIT L1B OBS NetCDF.")
+    parser.add_argument("--emit-atmosphere", help="Exactly paired L2A MASK NetCDF; H2O only, no QA exclusions.")
+    parser.add_argument("--emit-mf-mode", choices=emit_pipeline.MF_MODES, default="srf-column")
+    parser.add_argument("--emit-noise-backend", choices=["snr-reference", "jpl-parametric"], default="snr-reference")
+    parser.add_argument("--emit-noise-parameters", help="Explicit EMIT wavelength/a/b/c calibration file in native units.")
+    parser.add_argument("--emit-uncertainty-method", choices=["hygas", "jpl"], default="hygas",
+                        help="Default: shared HyGAS per-pixel formula. JPL propagation requires JPL MF.")
+    parser.add_argument("--emit-rows", nargs=2, type=int, metavar=("START", "STOP"), help="Native row window, zero-based, stop exclusive.")
+    parser.add_argument("--emit-columns", nargs=2, type=int, metavar=("START", "STOP"), help="Native detector columns, no reference resizing.")
+    parser.add_argument("--emit-native-only", action="store_true", help="Save native NPZ/report without GLT GeoTIFFs.")
 
     return parser
 
@@ -250,6 +264,33 @@ def main(argv=None):
                 mf_mode=args.enmap_mf_mode,
                 snr_reference_path=args.snr_reference,
                 gas=args.gas,
+            )
+    elif args.satellite == "emit":
+        if args.emit_uncertainty_method == "jpl" and args.emit_mf_mode != "jpl":
+            parser.error("--emit-uncertainty-method jpl requires --emit-mf-mode jpl")
+        options = dict(
+            gas=args.gas, k=args.k, min_wavelength=args.min_wavelength,
+            max_wavelength=args.max_wavelength, snr_reference_path=args.snr_reference,
+            mf_mode=args.emit_mf_mode, noise_backend=args.emit_noise_backend,
+            noise_parameters_path=args.emit_noise_parameters,
+            uncertainty_method=args.emit_uncertainty_method,
+            rows=slice(*args.emit_rows) if args.emit_rows else None,
+            columns=slice(*args.emit_columns) if args.emit_columns else None,
+            export_ortho=not args.emit_native_only,
+        )
+        if args.mode == "scene":
+            required = ["emit_rad", "emit_obs", "emit_atmosphere", "output"]
+            missing = [name for name in required if getattr(args, name) is None]
+            if missing:
+                parser.error(f"Missing required EMIT scene arguments: {', '.join(missing)}")
+            emit_pipeline.detection_emit(
+                args.emit_rad, args.emit_obs, args.emit_atmosphere, args.lut, args.output, **options,
+            )
+        else:
+            if not args.root_directory or not args.output_root:
+                parser.error("EMIT batch requires --root-directory and --output-root")
+            emit_pipeline.process_directory_emit(
+                args.root_directory, args.output_root, lut_file=args.lut, **options,
             )
     else:  # tanager
         if args.mode != "scene":
