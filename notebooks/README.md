@@ -3,6 +3,7 @@
 This folder contains the notebooks used to develop and validate HyGAS (methane enhancement retrieval, uncertainty propagation, scale-aware segmentation, IME, and flux estimation).
 
 Notes:
+- Development branches keep notebooks without saved execution outputs. See [CONTRIBUTING.md](../CONTRIBUTING.md) for cleaning/checking commands and the separate policy for frozen publication snapshots. Local executions may retain results until you prepare a commit.
 - **`notebooks/to_rev/` is intentionally excluded from this index** (ongoing work).
 - Outputs are generally written under `notebooks/outputs/` (also excluded from git; see `.gitignore`).
 - Some notebooks are legacy/prototyping artefacts; the top-level `README.md` lists only the notebooks used for the paper.

@@ -1,0 +1,29 @@
+name: Notebook outputs
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  notebook-outputs:
+    name: Notebook outputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out the proposed revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Test the notebook maintenance tool
+        run: python -m unittest discover -s tests -p 'test_notebook_outputs.py'
+      - name: Check all indexed notebooks
+        run: python scripts/notebook_outputs.py check

@@ -14,6 +14,9 @@ The repository also contains an **experimental CO₂ retrieval path for PRISMA, 
 
 The graphical abstract above is the published visual summary of the HyGAS CH₄ framework.
 
+For development and notebook-output conventions, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Executed publication snapshots remain available through their paper branches and release tags.
+
 ## What HyGAS supports
 
 | Input / sensor | Gas | Entry point | Retrieval outputs | Common plume analysis | Status |
