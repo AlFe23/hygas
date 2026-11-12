@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "selected_for": "HyGAS reference-SNR uncertainty propagation",
+  "selection_authority": "HyGAS project selections, not provider-wide certified calibrations",
+  "index_convention": "zero-based, exclusive stops; rows/columns refer to each generation reader grid",
+  "references": [
+    {
+      "sensor": "prisma",
+      "product": "PRS_L1_STD_OFFL_20200401085313_20200401085318_0001",
+      "acquisition_utc": "2020-04-01T08:53:13Z",
+      "locality": "Northern State, Sudan",
+      "rows": [
+        0,
+        1000
+      ],
+      "columns": [
+        0,
+        1000
+      ],
+      "mask_fraction": 1,
+      "generator": "notebooks/prisma_enmap_SNRcomparison.ipynb::build_columnwise_snr_reference",
+      "status": "historical_unchanged",
+      "reference_path": "reference_snr/prisma/20200401085313/snr_reference_columnwise.npz",
+      "reference_sha256": "a7e95a7b2e85de1c0b9a83f2d8abe6d888b24790b4e173d36533549624afb0d1",
+      "reference_bytes": 1072113,
+      "shape_bands_columns": [
+        164,
+        1000
+      ],
+      "wavelength_range_nm": [
+        1008.29248046875,
+        2496.7607421875
+      ],
+      "k_pca": 4,
+      "sigma_mode": "native_along_track_first_difference_ddof1_div_sqrt2"
+    },
+    {
+      "sensor": "enmap",
+      "product": "ENMAP01-____L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z",
+      "acquisition_utc": "2022-07-12T10:43:02Z",
+      "locality": "Agadez region, Niger",
+      "rows": [
+        0,
+        1024
+      ],
+      "columns": [
+        0,
+        1000
+      ],
+      "mask_fraction": 1,
+      "generator": "notebooks/prisma_enmap_SNRcomparison.ipynb::build_columnwise_snr_reference",
+      "status": "historical_unchanged",
+      "reference_path": "reference_snr/enmap/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/snr_reference_columnwise.npz",
+      "reference_sha256": "7e0a71f28ce541a7b2f9ba1e07e2c934329d7866167c75f07641dc1d652c847f",
+      "reference_bytes": 776119,
+      "shape_bands_columns": [
+        123,
+        1000
+      ],
+      "wavelength_range_nm": [
+        1004.2100219726562,
+        2445.530029296875
+      ],
+      "k_pca": 4,
+      "sigma_mode": "native_along_track_first_difference_ddof1_div_sqrt2"
+    },
+    {
+      "sensor": "tanager",
+      "product": "20250509_090323_87_4001",
+      "acquisition_utc": "2025-05-09T09:03:23.870339Z",
+      "locality": "Northern State, Sudan",
+      "rows": [
+        0,
+        234
+      ],
+      "columns": [
+        0,
+        607
+      ],
+      "mask_fraction": 0.12,
+      "generator": "scripts/SNR_tanager_reference.py",
+      "status": "historical_unchanged_pending_review",
+      "caveats": [
+        "Later calibration analysis uses rows 0:220; historical NPZ/command instead record 0:234",
+        "Legacy reference stores native radiance scale; common-unit comparison converts mean radiance by 0.1. Reference-unit consistency is deferred"
+      ],
+      "reference_path": "reference_snr/tanager/snr_reference_columnwise.npz",
+      "reference_sha256": "e5dbfa28e15940b725823699c0aa4d5cc2d1442479685aa07520db305c7b1cf3",
+      "reference_bytes": 634464,
+      "shape_bands_columns": [
+        301,
+        607
+      ],
+      "wavelength_range_nm": [
+        1001.6400146484375,
+        2499.0
+      ],
+      "k_pca": 4,
+      "sigma_mode": "native_along_track_first_difference_ddof1_div_sqrt2"
+    },
+    {
+      "sensor": "emit",
+      "product": "EMIT_L1B_RAD_001_20240624T091109_2417606_010",
+      "acquisition_utc": "2024-06-24T09:11:09Z",
+      "locality": "Libya-4 area, Libya",
+      "rows": [
+        0,
+        2176
+      ],
+      "columns": [
+        0,
+        1242
+      ],
+      "mask_fraction": null,
+      "generator": "scripts/SNR_emit_reference.py",
+      "status": "experimental",
+      "product_version": "V001",
+      "software_build_version": "010618",
+      "radiance_unit": "uW cm-2 sr-1 nm-1",
+      "column_interpolation": false,
+      "reference_path": "reference_snr/emit/20240624T091109_2417606_010/snr_reference_columnwise_experimental.npz",
+      "reference_sha256": "977c02481454ac15b6d52c4f1b5a2b7852c4d32a901368449bb83be5067bd954",
+      "reference_bytes": 1624930,
+      "shape_bands_columns": [
+        201,
+        1242
+      ],
+      "wavelength_range_nm": [
+        1006.8344116210938,
+        2492.923828125
+      ],
+      "k_pca": 4,
+      "sigma_mode": "native_along_track_first_difference_ddof1_div_sqrt2"
+    }
+  ]
+}

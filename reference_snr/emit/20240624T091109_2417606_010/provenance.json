@@ -1,0 +1,47 @@
+{
+  "baseline_id": "emit_D_full2176_v1_20261023",
+  "baseline_consolidated": "2026-10-23",
+  "packaged": "2026-11-12",
+  "status": "experimental",
+  "source_inputs": [
+    {
+      "filename": "EMIT_L1B_RAD_001_20240624T091109_2417606_010.nc",
+      "bytes": 3148114417,
+      "sha256": "f78f950517d0a4437f66c0894fa04140337c3b57575d9cc5b9d63d6a9bf245f8"
+    },
+    {
+      "filename": "EMIT_L1B_OBS_001_20240624T091109_2417606_010.nc",
+      "bytes": 184628676,
+      "sha256": "d84d1e907fbb8ca44bce777eb7c098b69e100748edad87917e26e5523aec320c"
+    }
+  ],
+  "files": [
+    {
+      "filename": "snr_reference_columnwise_experimental.npz",
+      "bytes": 1624930,
+      "sha256": "977c02481454ac15b6d52c4f1b5a2b7852c4d32a901368449bb83be5067bd954"
+    },
+    {
+      "filename": "support_and_QA.npz",
+      "bytes": 1829401,
+      "sha256": "1a18351b0edcc1920dc2837998167663105d2f988525eaca42e594cea5f0f7f8"
+    }
+  ],
+  "unchanged_historical_npz": true,
+  "raw_rad_regeneration_check": {
+    "passed": true,
+    "rtol": 2e-06,
+    "atol": 1e-07,
+    "band_nm_max_abs_error": 0.0,
+    "mean_radiance_max_abs_error": 4.76837158203125e-07,
+    "snr_max_abs_error": 6.1031822951918e-05
+  },
+  "regeneration_packages": {
+    "numpy": "2.3.3",
+    "scipy": "1.16.2",
+    "scikit-learn": "1.7.2",
+    "h5py": "3.13.0",
+    "threadpoolctl": "3.6.0"
+  },
+  "regeneration_note": "Public generator run directly on exact RAD; numerical comparison, no refitting of distributed NPZ"
+}

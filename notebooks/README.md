@@ -62,6 +62,7 @@ These notebooks are useful when working on one sensor at a time (often supersede
 
 ## Radiometry / calibration utilities
 
+- `notebooks/emit_snr_reference.ipynb`: standalone EMIT reference-SNR generation and inspection; calls `scripts/SNR_emit_reference.py`. The [public reference catalog](../reference_snr/README.md) records the four selected scenes and the distinction between historical references and A–H diagnostics.
 - `notebooks/tanager_calibration_selection.ipynb`: identifies homogeneous row subsets for Tanager calibration scenes.
 - `notebooks/tanager_hdf_explorer.ipynb`: browse Tanager HDF5 content and quicklook.
 - `notebooks/prisma_preprocess_diagnostics.ipynb`: PRISMA preprocessing checks (radiance cube sanity, masks, etc.).
