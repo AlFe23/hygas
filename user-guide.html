@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Sensor-specific inputs, matched-filter modes, outputs, reference SNR, uncertainty and downstream plume analysis in HyGAS.">
+  <meta name="theme-color" content="#12334b">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="User guide — HyGAS">
+  <meta property="og:description" content="Sensor-specific inputs, matched-filter modes, outputs, reference SNR, uncertainty and downstream plume analysis in HyGAS.">
+  <title>User guide — HyGAS</title>
+  <link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script src="assets/js/site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header" data-menu-open="false">
+    <div class="container header-inner">
+      <a class="brand" href="index.html" aria-label="HyGAS home"><img src="assets/images/hygas-logo.png" alt="HyGAS — Hyperspectral Gas Analysis Suite" width="1254" height="1254"></a>
+      <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-navigation">Menu <span aria-hidden="true">☰</span></button>
+      <nav class="site-nav" id="site-navigation" aria-label="Main navigation">
+        <a href="get-started.html">Get started</a>
+<a href="user-guide.html" aria-current="page">User guide</a>
+<a href="case-studies.html">Case studies</a>
+<a href="science.html">Science</a>
+        <a class="nav-github" href="https://github.com/AlFe23/hygas">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+<main id="main-content">
+  <section class="page-hero"><div class="container">
+    <p class="eyebrow">User guide</p>
+    <h1>From scene to interpretable results.</h1>
+    <p class="lead">Choose your input product, configure the retrieval, and understand what each HyGAS output tells you.</p>
+    <p>These instructions follow the current <code>develop</code> branch. Start with the <a href="get-started.html">EnMAP quick start</a> for environment setup and a complete first command. Executed paper examples are preserved in the <a href="https://github.com/AlFe23/hygas/releases/tag/mdpi-methane-paper-v1.0">publication release</a>.</p>
+  </div></section>
+
+  <div class="container content-grid">
+    <aside class="toc" aria-label="On this page">
+      <p>On this page</p>
+      <nav>
+        <a href="#choose-input">Choose your input</a>
+        <a href="#matched-filter">Select a matched filter</a>
+        <a href="#outputs">Read the output files</a>
+        <a href="#reference-snr">Use an SNR reference</a>
+        <a href="#uncertainty">Analyse uncertainty and flux</a>
+        <a href="#troubleshooting">Resolve common issues</a>
+      </nav>
+    </aside>
+
+    <article class="prose">
+      <section id="choose-input">
+        <h2>Choose your input product</h2>
+        <p>For PRISMA, EnMAP, and Tanager-1, the published CH₄ route begins with Level-1 radiances. EMIT and GHGSat enter the published analysis through provider-derived Level-2 enhancement and uncertainty products. Select the route that matches the data you actually have.</p>
+
+        <details id="sensor-enmap" open>
+          <summary>EnMAP · Level-1B retrieval</summary>
+          <div>
+            <p>Supply matching VNIR and SWIR radiance GeoTIFFs, their <code>METADATA.XML</code>, a CH₄ LUT, and an EnMAP SNR reference. EnMAP does not require a separate DEM.</p>
+            <p><a class="text-link" href="get-started.html#run">Use the complete single-scene command</a>. For multiple scene folders, use batch mode:</p>
+            <div class="code-block">
+              <div class="code-toolbar"><span>Terminal · EnMAP batch</span><button type="button" class="copy-button" data-copy>Copy</button></div>
+              <pre><code>python scripts/main.py \
+  --satellite enmap --mode batch --gas ch4 \
+  --root-directory /path/to/enmap-scenes \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference reference_snr/enmap/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/snr_reference_columnwise.npz \
+  --enmap-mf-mode full-column</code></pre>
+            </div>
+            <p>Each scene folder must contain its three matching source files. The EnMAP batch runner writes scene-adjacent output folders and skips folders whose output directory is already nonempty. Review its directory processing report before rerunning an interrupted batch.</p>
+          </div>
+        </details>
+
+        <details id="sensor-prisma">
+          <summary>PRISMA · Level-1 and Level-2C retrieval</summary>
+          <div>
+            <p>Supply Level-1 and matching Level-2C products, a DEM, the CH₄ LUT, and a PRISMA SNR reference. Official ZIP archives and HE5 files are accepted. The DEM NetCDF must provide <code>lat</code>, <code>lon</code>, and <code>elev</code> in metres.</p>
+            <div class="code-block">
+              <div class="code-toolbar"><span>Terminal · PRISMA single scene</span><button type="button" class="copy-button" data-copy>Copy</button></div>
+              <pre><code>python scripts/main.py \
+  --satellite prisma --mode scene --gas ch4 \
+  --l1 /path/to/PRISMA_L1.he5 \
+  --l2c /path/to/PRISMA_L2C.he5 \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference reference_snr/prisma/20200401085313/snr_reference_columnwise.npz \
+  --output outputs/prisma-scene \
+  --prisma-mf-mode full-column</code></pre>
+            </div>
+            <p>For batch processing, select <code>--mode batch</code>, replace the scene inputs with <code>--root-directory</code>, and optionally set <code>--output-root</code>. See the <a href="https://github.com/AlFe23/hygas/blob/develop/README.md#prisma">repository’s PRISMA commands</a>.</p>
+          </div>
+        </details>
+
+        <details id="sensor-tanager">
+          <summary>Tanager-1 · radiance and surface reflectance</summary>
+          <div>
+            <p>Supply the Basic radiance HDF5 product and its companion surface-reflectance product, which supplies atmospheric water vapour, together with a DEM, the CH₄ LUT, and the Tanager SNR reference. Tanager currently supports single-scene processing.</p>
+            <div class="code-block">
+              <div class="code-toolbar"><span>Terminal · Tanager-1 single scene</span><button type="button" class="copy-button" data-copy>Copy</button></div>
+              <pre><code>python scripts/main.py \
+  --satellite tanager --mode scene --gas ch4 \
+  --tanager-rad /path/to/basic_radiance.h5 \
+  --tanager-sr /path/to/surface_reflectance.h5 \
+  --dem /path/to/dem.nc \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference reference_snr/tanager/snr_reference_columnwise.npz \
+  --output outputs/tanager-scene \
+  --tanager-mf-mode full-column</code></pre>
+            </div>
+            <p>The distributed historical Tanager reference has a documented radiance-unit consistency limitation. Review the <a href="https://github.com/AlFe23/hygas/blob/develop/reference_snr/README.md">reference catalog</a> before interpreting absolute instrument uncertainty.</p>
+          </div>
+        </details>
+
+        <details id="sensor-level2">
+          <summary>EMIT and GHGSat · provider Level-2 products</summary>
+          <div>
+            <p>Begin with the provider’s methane enhancement and associated uncertainty rasters. These products already contain a retrieval; the published HyGAS workflow then applies common plume segmentation, IME, and flux analysis through notebooks.</p>
+            <p>Preserve the provider’s units, grid, uncertainty definition, and quality information when preparing the case. Data access and redistribution depend on the source product.</p>
+            <ul>
+              <li><a href="https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/Pakistan_plume_detection_scaled.ipynb">Pakistan: EMIT–GHGSat segmentation</a></li>
+              <li><a href="https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/Pakistan_plume_analysis_emit_ghgsat.ipynb">Pakistan: IME, flux, and uncertainty</a></li>
+              <li><a href="case-studies.html?case=buenos-aires-2024-01-12">Buenos Aires: EnMAP, EMIT, and GHGSat</a></li>
+            </ul>
+          </div>
+        </details>
+
+        <details id="experimental-routes">
+          <summary>Experimental routes · EMIT Level-1B and CO₂</summary>
+          <div class="notice notice--experimental">
+            <p><strong>EMIT Level-1B:</strong> current development accepts exactly paired RAD and OBS products plus the same-scene, same-version L2A MASK for atmospheric water vapour. It requires an explicitly selected noise calibration and preserves native detector coordinates before optional GLT export. This integration has not been validated end to end. Follow the <a href="https://github.com/AlFe23/hygas/blob/develop/README.md#experimental-emit-l1b-ch%E2%82%84-or-co%E2%82%82">current repository instructions</a> for its configuration and support rules.</p>
+            <p><strong>CO₂:</strong> experimental retrieval paths exist for PRISMA, EnMAP, Tanager-1, and EMIT, using a compatible CO₂ LUT. The notebooks support segmentation quality assurance, but CO₂ background-clutter quantification, total uncertainty, IME, flux, and independent quantitative validation are not implemented. The published methane paper does not validate this extension.</p>
+          </div>
+        </details>
+      </section>
+
+      <section id="matched-filter">
+        <h2>Select a matched filter</h2>
+        <p>The paper names the background-statistics strategy; the CLI selects it through a sensor-specific option. These EnMAP examples use actual CLI arguments.</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption>Paper terminology and EnMAP configuration</caption>
+            <thead><tr><th scope="col">Method</th><th scope="col">Arguments</th><th scope="col">Background model</th></tr></thead>
+            <tbody>
+              <tr><td>CMF</td><td><code>--enmap-mf-mode srf-column --k 1</code></td><td>Scene-wide statistics with column-wise spectral targets.</td></tr>
+              <tr><td>CTMF, k = 3</td><td><code>--enmap-mf-mode srf-column --k 3</code></td><td>Separate statistics for three spectral clusters.</td></tr>
+              <tr><td>CWCMF</td><td><code>--enmap-mf-mode full-column</code></td><td>Statistics and targets for each detector column; <code>--k</code> is ignored.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>For PRISMA use <code>--prisma-mf-mode</code>; for Tanager use <code>--tanager-mf-mode</code>, with the same selections. The CLI default is <code>srf-column</code>. Set <code>full-column</code> explicitly to follow the primary reference configuration in the published CH₄ cases.</p>
+        <p>The additional <code>advanced</code> and <code>jpl</code> modes are research options. Record the method, spectral window, reference file, and cluster count when comparing results. For CH₄, the default spectral window is 2100–2450 nm; change it with <code>--min-wavelength</code> and <code>--max-wavelength</code>.</p>
+      </section>
+
+      <section id="outputs">
+        <h2>Read the output files</h2>
+        <p>PRISMA, EnMAP, and Tanager retrievals write sensor-specific GeoTIFFs and a processing report. Use the report to connect each map to its source and configuration.</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th scope="col">Output pattern</th><th scope="col">Interpretation</th></tr></thead>
+            <tbody>
+              <tr><td><code>*_MF.tif</code></td><td>Gas enhancement ΔX in ppm·m: concentration integrated along the optical path.</td></tr>
+              <tr><td><code>*_MF_uncertainty.tif</code></td><td>Instrument-noise uncertainty σ<sub>RMN</sub> in the same enhancement units.</td></tr>
+              <tr><td><code>*_CL.tif</code> / <code>*_classified.tif</code></td><td>Technical labels for the selected matched-filter mode. These are not plume polygons.</td></tr>
+              <tr><td><code>*_RGB.tif</code> / <code>*_rgb.tif</code></td><td>RGB scene context.</td></tr>
+              <tr><td><code>processing_report.txt</code></td><td>Input paths, parameter choices, and output paths.</td></tr>
+              <tr><td><code>*_MF_sensitivity.tif</code></td><td>Additional sensitivity output for PRISMA and EnMAP in <code>jpl</code> mode.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Keep ΔX in ppm·m distinct from a mixing-ratio enhancement in ppb and from a flux in t/h. Some historical analysis figures use converted ppb values; preserve the documented conversion and units when reproducing those figures.</p>
+      </section>
+
+      <section id="reference-snr">
+        <h2>Use an SNR reference</h2>
+        <p>The repository includes column-wise reference-SNR NPZ files for propagating radiometric noise. Supply the matching sensor reference with <code>--snr-reference</code>; you do not need to download its calibration scene or regenerate PCA for a first retrieval.</p>
+        <p>You can also set <code>PRISMA_SNR_REFERENCE</code>, <code>ENMAP_SNR_REFERENCE</code>, <code>TANAGER_SNR_REFERENCE</code>, or <code>EMIT_SNR_REFERENCE</code>. An explicit CLI path makes a saved command easier to reproduce.</p>
+        <p>These are selected project references, with scene-specific domains and generation methods. They describe radiometric noise and do not include surface clutter, target error, or the complete plume/flux uncertainty. Transferring a reference across processing builds or epochs requires scientific assessment.</p>
+        <p><a class="text-link" href="https://github.com/AlFe23/hygas/blob/develop/reference_snr/README.md">Read the reference catalog and known limitations</a> for acquisition identifiers, spatial selections, Tanager’s historical ROI and unit caveats, and experimental EMIT support. The <a href="https://github.com/AlFe23/hygas/blob/develop/reference_snr/scenes.json">machine-readable catalog</a> records provenance and hashes.</p>
+      </section>
+
+      <section id="uncertainty">
+        <h2 id="plume-analysis">Continue from enhancement to flux</h2>
+        <p>A methane-enhancement retrieval is the first part of the analysis. The case-study notebooks add the plume definition, background treatment, and wind assumptions needed to interpret emissions.</p>
+        <ol>
+          <li><strong>Review the enhancement and scene context.</strong> Inspect spatial structure, possible artefacts, and the selected retrieval configuration.</li>
+          <li><strong>Segment and review the plume.</strong> Scale-aware criteria are expressed in physical units and adapted to the sensor’s ground sampling distance. Keep the final mask and its settings.</li>
+          <li><strong>Estimate background clutter.</strong> For Level-1 HyGAS retrievals, use plume-free pixels with continuum spectra similar to the surface beneath the plume to estimate σ<sub>surf</sub>.</li>
+          <li><strong>Form total enhancement uncertainty.</strong> Combine instrument and background terms as σ<sub>tot</sub> = √(σ<sub>RMN</sub>² + σ<sub>surf</sub>²). Provider Level-2 products retain their documented uncertainty treatment.</li>
+          <li><strong>Estimate IME and flux.</strong> Propagate enhancement uncertainty to Integrated Mass Enhancement, then use the effective-wind formulation with a wind input and its uncertainty. Report the mask, retrieval configuration, and wind assumptions with the result.</li>
+        </ol>
+        <figure class="figure">
+          <a class="image-link" href="assets/images/plume-uncertainty.png" data-lightbox="Enhancement and plume uncertainty · Figure 5"><img src="assets/images/plume-uncertainty.png" alt="Three published EnMAP panels showing methane enhancement, instrument-only uncertainty over segmented plumes, and total uncertainty including scene clutter. All colour scales are in ppm metres." width="1694" height="498" loading="lazy"></a>
+          <figcaption class="figure-caption">Enhancement, instrument uncertainty, and total plume uncertainty are separate products. Figure 5 from <a href="https://doi.org/10.3390/methane5010010">Ferrari et al., Methane (2026)</a>, CC BY. Units: ppm·m.</figcaption>
+        </figure>
+        <p>The retrieval CLI supplies σ<sub>RMN</sub>. The reviewed downstream workflow supplies the background-aware uncertainty and plume-to-flux analysis shown here. Use <a href="case-studies.html?case=buenos-aires-2024-01-12">Buenos Aires</a> as an end-to-end published example, or follow the <a href="https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/docs/paper-notebook-map.md">paper-to-notebook map</a> for the relevant scientific steps.</p>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Resolve common issues</h2>
+        <details>
+          <summary>Python cannot import osgeo or GDAL</summary>
+          <p>Activate <code>hygas</code> and repeat the <a href="get-started.html#install">GDAL import check</a>. GDAL’s Python bindings must match the active interpreter. Use the curated environment rather than mixing bindings from another Python installation.</p>
+        </details>
+        <details>
+          <summary>The command reports missing inputs</summary>
+          <p>Run from the repository root and replace the example paths. Check the input list for your sensor: PRISMA needs L1 and L2C; EnMAP needs matching VNIR, SWIR, and XML; Tanager needs radiance and companion surface reflectance. PRISMA and Tanager also require a DEM. Check the gas-specific LUT path.</p>
+        </details>
+        <details>
+          <summary>A batch run skips a scene</summary>
+          <p>The EnMAP batch runner skips a scene if its output folder already contains files. Inspect the directory processing report and the existing files before choosing a fresh output location or moving an incomplete result aside.</p>
+        </details>
+        <details>
+          <summary>A method change produces different maps</summary>
+          <p>Compare the method, spectral window, cluster count, SNR reference, and source-product version. Scene-wide, clustered, and per-column background models can yield different results. Keep each configuration in a separate output directory and interpret comparisons with the scene’s artefacts and background in mind.</p>
+        </details>
+        <details>
+          <summary>The uncertainty map does not explain all visible variability</summary>
+          <p><code>*_MF_uncertainty.tif</code> contains the instrument contribution. Follow the <a href="#uncertainty">downstream uncertainty workflow</a> for surface clutter and plume-level propagation, and inspect the <a href="#reference-snr">reference limitations</a>. A small instrument term alone does not establish retrieval accuracy.</p>
+        </details>
+        <details>
+          <summary>A notebook references a missing local folder</summary>
+          <p>Case-study notebooks preserve the scientific configuration, including local input paths. Obtain the required products and adapt those paths before running. Large scene inputs are excluded from Git. Use the frozen paper release for saved publication outputs; development notebooks intentionally omit them.</p>
+        </details>
+        <p class="related-links"><a href="get-started.html">Return to get started</a><a href="https://github.com/AlFe23/hygas/blob/develop/README.md">Full repository instructions</a><a href="https://github.com/AlFe23/hygas/issues">Repository issues</a></p>
+      </section>
+    </article>
+  </div>
+</main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand"><a class="footer-wordmark" href="index.html">HyGAS</a><p>Hyperspectral Gas Analysis Suite</p></div>
+        <nav class="footer-links" aria-label="Footer navigation"><a href="get-started.html">Get started</a><a href="user-guide.html">User guide</a><a href="case-studies.html">Case studies</a><a href="science.html#cite">Cite the method</a><a href="science.html#about">About & contact</a><a href="https://github.com/AlFe23/hygas">GitHub ↗</a></nav>
+      </div>
+      <div class="footer-bottom"><p>Research supported by ASI CLEAR-UP. Imagery and products: ASI, DLR, Planet, NASA/JPL and GHGSat, as credited in each case.</p><p>Software: <a href="https://github.com/AlFe23/hygas/blob/develop/LICENSE">GPL-3.0</a> · <a href="science.html#paper">Scientific sources</a></p></div>
+    </div>
+  </footer>
+  <div class="visually-hidden" id="copy-feedback" role="status" aria-live="polite"></div>
+  <dialog class="image-dialog" id="image-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-toolbar"><p id="dialog-title">Scientific figure</p><button type="button" class="dialog-close" data-close-dialog aria-label="Close enlarged figure">Close ×</button></div>
+    <div class="dialog-body"><img id="dialog-image" alt=""></div>
+  </dialog>
+</body>
+</html>

@@ -1,0 +1,172 @@
+[
+  {
+    "id": "buenos-aires-2024-01-12",
+    "title": "Buenos Aires landfill",
+    "region": "Buenos Aires, Argentina",
+    "date": "2024-01-12",
+    "dateLabel": "12 January 2024",
+    "sensors": ["EnMAP", "EMIT", "GHGSat"],
+    "workflow": "Mixed L1 / L2",
+    "summary": "Follow the methane plume above the Complejo Ambiental Norte III landfill through three satellite products and a common plume-analysis workflow.",
+    "interpretation": "HyGAS retrieves EnMAP enhancement from Level-1 radiance and ingests the EMIT and GHGSat Level-2 products. The case compares a fixed integration area with scale-aware plume segmentation. EnMAP and GHGSat observed the site close in time; EMIT observed it later that day, so plume evolution matters when interpreting differences.",
+    "acquisitionNote": "12 January 2024, UTC: GHGSat 14:45:16; EnMAP 14:46:53; EMIT 18:59:17. These are same-day acquisitions, not a strictly simultaneous three-sensor observation.",
+    "figures": [
+      {
+        "src": "assets/images/buenos-aires-january-enmap.png",
+        "title": "EnMAP: enhancement and uncertainty",
+        "caption": "Segmented plume contours over the EnMAP maps. Archived paper figure; derived ppb display. Retrieval CLI outputs are in ppm·m.",
+        "unit": "ppb",
+        "credit": "Ferrari et al. (2026), Figure 17; EnMAP imagery: DLR."
+      },
+      {
+        "src": "assets/images/buenos-aires-january-ghgsat.png",
+        "title": "GHGSat: enhancement and uncertainty",
+        "caption": "The provider Level-2 product enters the shared downstream workflow. Archived paper figure; derived ppb display. Retrieval CLI outputs are in ppm·m.",
+        "unit": "ppb",
+        "credit": "Ferrari et al. (2026), Figure 17; imagery and Level-2 product: GHGSat."
+      },
+      {
+        "src": "assets/images/buenos-aires-january-emit.png",
+        "title": "EMIT: enhancement and uncertainty",
+        "caption": "The later EMIT acquisition with its segmented plume contours. Archived paper figure; derived ppb display. Retrieval CLI outputs are in ppm·m.",
+        "unit": "ppb",
+        "credit": "Ferrari et al. (2026), Figure 17; EMIT imagery and Level-2 product: NASA/JPL."
+      }
+    ],
+    "notebooks": [
+      {
+        "label": "Plume segmentation",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/BA_plume_detection_scaled.ipynb"
+      },
+      {
+        "label": "IME, flux and uncertainty analysis",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/BA_plume_analysis_enmap_ghgsat_emit.ipynb"
+      }
+    ],
+    "paperReference": "Ferrari et al. (2026), Section 5.2; Figures 16–17; Tables 5–7."
+  },
+  {
+    "id": "turkmenistan-2024-09-11",
+    "title": "Turkmenistan gas compression station",
+    "region": "Korpedje, Turkmenistan",
+    "date": "2024-09-11",
+    "dateLabel": "11 September 2024",
+    "sensors": ["PRISMA", "EnMAP", "GHGSat"],
+    "workflow": "Mixed L1 / L2",
+    "summary": "Explore how three missions resolve methane plumes near the Korpedje gas compression station when plume masks follow the same physical criteria.",
+    "interpretation": "PRISMA and EnMAP Level-1 retrievals join a GHGSat Level-2 product in a common analysis. Smoothing, morphology and minimum plume area are defined in metres and rescaled to each sensor's grid. The panels preserve their original units and separate colour scales. Source variability during the acquisition window limits direct comparisons of emission rates.",
+    "acquisitionNote": "11 September 2024, UTC: GHGSat 06:36:16; PRISMA 07:11:43; EnMAP 07:55:47. The three acquisitions span about 79 minutes.",
+    "figures": [
+      {
+        "src": "assets/images/turkmenistan-enmap-enhancement.png",
+        "title": "EnMAP: enhancement and plume contours",
+        "caption": "The EnMAP enhancement map with scale-aware plume contours. Original ppm·m display; this panel has its own colour scale.",
+        "unit": "ppm·m",
+        "credit": "HyGAS ESRIN 2026 framework poster; EnMAP imagery: DLR."
+      },
+      {
+        "src": "assets/images/turkmenistan-prisma-enhancement.png",
+        "title": "PRISMA: enhancement and plume contours",
+        "caption": "The same site in the PRISMA retrieval. Original ppm·m display; its colour scale is independent of the EnMAP panel.",
+        "unit": "ppm·m",
+        "credit": "HyGAS ESRIN 2026 framework poster; PRISMA imagery: ASI."
+      },
+      {
+        "src": "assets/images/turkmenistan-ghgsat-enhancement.png",
+        "title": "GHGSat: enhancement and plume contours",
+        "caption": "The provider product retains its original ppb display and independent colour scale. Its values are not directly interchangeable with the ppm·m panels.",
+        "unit": "ppb",
+        "credit": "HyGAS ESRIN 2026 framework poster; imagery and Level-2 product: GHGSat."
+      }
+    ],
+    "notebooks": [
+      {
+        "label": "Scale-aware plume segmentation",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/Turkmenistan_plume_detection_scaled.ipynb"
+      },
+      {
+        "label": "Multi-sensor IME and flux analysis",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/Turkmenistan_plume_analysis_enmap_prisma_ghgsat.ipynb"
+      }
+    ],
+    "paperReference": "Ferrari et al. (2026), Section 5.3; Figures 18–19; Tables 8–10."
+  },
+  {
+    "id": "pakistan-2024-02-28",
+    "title": "Pakistan gas processing complex",
+    "region": "Sachal Gas Processing Complex, Pakistan",
+    "date": "2024-02-28",
+    "dateLabel": "28 February 2024",
+    "sensors": ["EMIT", "GHGSat"],
+    "workflow": "Provider L2 analysis",
+    "summary": "A pair of observations 76 seconds apart illustrates the shared downstream treatment of provider enhancement and uncertainty products.",
+    "interpretation": "This example starts from EMIT and GHGSat Level-2 products. HyGAS applies common physical segmentation criteria and wind treatment to support plume integration and flux analysis. The different provider uncertainty definitions remain relevant when reading the uncertainty maps.",
+    "acquisitionNote": "28 February 2024, UTC: GHGSat 04:34:05; EMIT 04:35:21. The observations are separated by 76 seconds.",
+    "figures": [
+      {
+        "src": "assets/images/pakistan-emit.png",
+        "title": "EMIT: enhancement and uncertainty",
+        "caption": "The segmented EMIT plume over the common study area. Archived paper figure; derived ppb display. Retrieval CLI outputs are in ppm·m.",
+        "unit": "ppb",
+        "credit": "Ferrari et al. (2026), Figure 21; EMIT imagery and Level-2 product: NASA/JPL."
+      },
+      {
+        "src": "assets/images/pakistan-ghgsat.png",
+        "title": "GHGSat: enhancement and uncertainty",
+        "caption": "The corresponding GHGSat plume with scale-aware contours. Archived paper figure; derived ppb display. Retrieval CLI outputs are in ppm·m.",
+        "unit": "ppb",
+        "credit": "Ferrari et al. (2026), Figure 21; imagery and Level-2 product: GHGSat."
+      }
+    ],
+    "notebooks": [
+      {
+        "label": "Plume segmentation from Level-2 products",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/Pakistan_plume_detection_scaled.ipynb"
+      },
+      {
+        "label": "IME, flux and provider uncertainty",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/Pakistan_plume_analysis_emit_ghgsat.ipynb"
+      }
+    ],
+    "paperReference": "Ferrari et al. (2026), Section 5.4; Figures 20–21; Tables 11–13."
+  },
+  {
+    "id": "buenos-aires-revisit",
+    "title": "Buenos Aires: EnMAP / Tanager-1 revisit",
+    "region": "Buenos Aires, Argentina",
+    "date": null,
+    "dateLabel": "9 March 2024 / 26 June 2025",
+    "sensors": ["EnMAP", "Tanager-1"],
+    "workflow": "L1 retrieval + plume analysis",
+    "summary": "Revisit the same landfill on two different dates to examine retrieval behaviour over a heterogeneous urban and industrial background.",
+    "interpretation": "The published experiment compares scene-wide and column-wise matched-filter configurations within each scene. The gallery shows the column-wise examples. This is a non-simultaneous revisit: differences between the two dates cannot establish a contemporaneous sensor-accuracy ranking or an emission trend.",
+    "acquisitionNote": "EnMAP: 9 March 2024, 14:24:31 UTC. Tanager-1: 26 June 2025, 14:44:19 UTC. These observations were acquired more than a year apart.",
+    "figures": [
+      {
+        "src": "assets/images/buenos-aires-revisit-enmap.png",
+        "title": "EnMAP: column-wise retrieval",
+        "caption": "9 March 2024; enhancement and uncertainty with the segmented plume. Archived paper figure; derived ppb display. Retrieval CLI outputs are in ppm·m.",
+        "unit": "ppb",
+        "credit": "Ferrari et al. (2026), Figure 22, top row; EnMAP imagery: DLR."
+      },
+      {
+        "src": "assets/images/buenos-aires-revisit-tanager.png",
+        "title": "Tanager-1: column-wise retrieval",
+        "caption": "26 June 2025; enhancement and uncertainty over the same facility. Archived paper figure; derived ppb display. Retrieval CLI outputs are in ppm·m.",
+        "unit": "ppb",
+        "credit": "Ferrari et al. (2026), Figure 23, top row; Tanager-1 imagery: Planet."
+      }
+    ],
+    "notebooks": [
+      {
+        "label": "Plume segmentation for the revisit pair",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/BA2_plume_detection_single_MF.ipynb"
+      },
+      {
+        "label": "EnMAP and Tanager-1 analysis",
+        "url": "https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/BA2_plume_analysis_single_MF.ipynb"
+      }
+    ],
+    "paperReference": "Ferrari et al. (2026), Section 5.5; Figures 22–23; Table 14."
+  }
+]

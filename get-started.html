@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Install HyGAS and run your first EnMAP methane retrieval, from input files to enhancement and instrument-noise uncertainty maps.">
+  <meta name="theme-color" content="#12334b">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Get started — HyGAS">
+  <meta property="og:description" content="Install HyGAS and run your first EnMAP methane retrieval, from input files to enhancement and instrument-noise uncertainty maps.">
+  <title>Get started — HyGAS</title>
+  <link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script src="assets/js/site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header" data-menu-open="false">
+    <div class="container header-inner">
+      <a class="brand" href="index.html" aria-label="HyGAS home"><img src="assets/images/hygas-logo.png" alt="HyGAS — Hyperspectral Gas Analysis Suite" width="1254" height="1254"></a>
+      <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-navigation">Menu <span aria-hidden="true">☰</span></button>
+      <nav class="site-nav" id="site-navigation" aria-label="Main navigation">
+        <a href="get-started.html" aria-current="page">Get started</a>
+<a href="user-guide.html">User guide</a>
+<a href="case-studies.html">Case studies</a>
+<a href="science.html">Science</a>
+        <a class="nav-github" href="https://github.com/AlFe23/hygas">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+<main id="main-content">
+  <section class="page-hero"><div class="container">
+    <p class="eyebrow">Get started</p>
+    <h1>Your first methane map.</h1>
+    <p class="lead">Set up HyGAS, prepare an EnMAP scene, and retrieve methane enhancement with instrument-noise uncertainty.</p>
+    <p>This guide uses the published CH₄ retrieval workflow and the current <code>develop</code> branch. Processing runs on your computer. You will need Git, Mamba, and satellite inputs obtained separately.</p>
+    <nav aria-label="Quick-start steps">
+      <ol class="related-links">
+        <li><a href="#install">1. Install</a></li>
+        <li><a href="#inputs">2. Prepare inputs</a></li>
+        <li><a href="#run">3. Run retrieval</a></li>
+        <li><a href="#inspect">4. Inspect outputs</a></li>
+      </ol>
+    </nav>
+  </div></section>
+
+  <div class="container content-grid">
+    <aside class="toc" aria-label="On this page">
+      <p>On this page</p>
+      <nav>
+        <a href="#install">Install HyGAS</a>
+        <a href="#inputs">Prepare an EnMAP scene</a>
+        <a href="#run">Run the command</a>
+        <a href="#inspect">Read your results</a>
+        <a href="#next">Continue with a case study</a>
+      </nav>
+    </aside>
+
+    <article class="prose">
+      <section class="step" id="install">
+        <p class="step-number">Step 01</p>
+        <h2>Install HyGAS</h2>
+        <p>Clone the repository and select <code>develop</code>. The environment file supplies Python 3.11 and the geospatial dependencies; the requirements file adds the Python packages used by the project.</p>
+        <div class="code-block">
+          <div class="code-toolbar"><span>Terminal · repository and environment</span><button type="button" class="copy-button" data-copy>Copy</button></div>
+          <pre><code>git clone https://github.com/AlFe23/hygas.git
+cd hygas
+git checkout develop
+
+mamba env create -f environment.min.yml
+mamba activate hygas
+python -m pip install -r requirements-pip.txt</code></pre>
+        </div>
+        <p>Check that the active Python interpreter can load GDAL before preparing a retrieval.</p>
+        <div class="code-block">
+          <div class="code-toolbar"><span>Terminal · verify GDAL</span><button type="button" class="copy-button" data-copy>Copy</button></div>
+          <pre><code>python -c "from osgeo import gdal; print(gdal.VersionInfo())"</code></pre>
+        </div>
+        <p>A GDAL version string confirms that the bindings are importable. Keep the <code>hygas</code> environment active for the following commands.</p>
+        <div class="notice notice--note">
+          <p><strong>Reproducing the paper?</strong> The publication snapshot is preserved separately as <a href="https://github.com/AlFe23/hygas/releases/tag/mdpi-methane-paper-v1.0">mdpi-methane-paper-v1.0</a>. Use that version and its recorded configuration when reproducing published results. This guide follows current development.</p>
+        </div>
+      </section>
+
+      <section class="step" id="inputs">
+        <p class="step-number">Step 02</p>
+        <h2>Prepare an EnMAP scene</h2>
+        <p>Start with a Level-1B product. Keep its VNIR, SWIR, and XML files together and match the acquisition, segment, and processing version. EnMAP obtains the required scene geometry and atmospheric information from its metadata; this route does not require a separate DEM.</p>
+        <ul class="checklist">
+          <li><strong>VNIR radiance:</strong> the scene’s <code>…-SPECTRAL_IMAGE_VNIR.TIF</code>.</li>
+          <li><strong>SWIR radiance:</strong> the matching <code>…-SPECTRAL_IMAGE_SWIR.TIF</code>.</li>
+          <li><strong>Metadata:</strong> the matching <code>…-METADATA.XML</code>.</li>
+          <li><strong>Methane LUT:</strong> <code>dataset_ch4_full.hdf5</code>, obtained from the <a href="https://hive.utah.edu/concern/datasets/9w0323039">University of Utah HIVE dataset</a>. Retain the dataset’s citation and attribution.</li>
+          <li><strong>EnMAP SNR reference:</strong> the NPZ already included in the repository, shown below.</li>
+        </ul>
+        <div class="code-block">
+          <div class="code-toolbar"><span>Included reference · relative to the repository root</span><button type="button" class="copy-button" data-copy>Copy</button></div>
+          <pre><code>reference_snr/enmap/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/snr_reference_columnwise.npz</code></pre>
+        </div>
+        <p>Satellite radiances and LUTs are separate downloads; cloning HyGAS supplies the code and selected SNR references. See the <a href="user-guide.html#reference-snr">reference-SNR guide</a> for their scope and limitations.</p>
+      </section>
+
+      <section class="step" id="run">
+        <p class="step-number">Step 03</p>
+        <h2>Run a single-scene retrieval</h2>
+        <p>Run this command from the repository root. Replace every <code>/path/to/…</code> input with your local file path. The output directory will receive the results.</p>
+        <div class="code-block">
+          <div class="code-toolbar"><span>Terminal · EnMAP CH₄, column-wise matched filter</span><button type="button" class="copy-button" data-copy>Copy</button></div>
+          <pre><code>python scripts/main.py \
+  --satellite enmap --mode scene --gas ch4 \
+  --vnir /path/to/scene/ENMAP-SPECTRAL_IMAGE_VNIR.TIF \
+  --swir /path/to/scene/ENMAP-SPECTRAL_IMAGE_SWIR.TIF \
+  --metadata /path/to/scene/ENMAP-METADATA.XML \
+  --lut /path/to/dataset_ch4_full.hdf5 \
+  --snr-reference reference_snr/enmap/L1B-DT0000001584_20220712T104302Z_001_V010502_20251017T093724Z/snr_reference_columnwise.npz \
+  --output outputs/enmap-first-scene \
+  --min-wavelength 2100 --max-wavelength 2450 \
+  --enmap-mf-mode full-column</code></pre>
+        </div>
+        <p><code>full-column</code> selects the column-wise clutter-matched filter (CWCMF), the primary reference configuration in the published multi-sensor cases. The command explicitly records the 2100–2450 nm methane window.</p>
+        <p>Use separate output directories when comparing methods. The <a href="user-guide.html#matched-filter">user guide</a> maps the paper’s method names to the CLI options.</p>
+      </section>
+
+      <section class="step" id="inspect">
+        <p class="step-number">Step 04</p>
+        <h2>Read your results</h2>
+        <p>Open the GeoTIFFs in a GIS application and inspect the processing report. The filename prefix comes from the input product.</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption>Expected EnMAP files for this configuration</caption>
+            <thead><tr><th scope="col">File</th><th scope="col">What it contains</th></tr></thead>
+            <tbody>
+              <tr><td><code>*_MF.tif</code></td><td>Methane enhancement ΔX, in ppm·m.</td></tr>
+              <tr><td><code>*_MF_uncertainty.tif</code></td><td>Propagated instrument-noise uncertainty σ<sub>RMN</sub>, in ppm·m.</td></tr>
+              <tr><td><code>*_RGB.tif</code></td><td>An RGB scene quicklook for spatial context.</td></tr>
+              <tr><td><code>*_CL.tif</code></td><td>The technical classification map used by the selected method. In <code>full-column</code>, labels identify detector columns.</td></tr>
+              <tr><td><code>*_CH4_target.npy</code></td><td>The generated methane target spectra.</td></tr>
+              <tr><td><code>processing_report.txt</code></td><td>Input paths, processing parameters, spectral window, and output paths.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Enhancement is not emission rate.</strong> ΔX measures excess methane along the optical path. The uncertainty raster describes the instrument contribution. To estimate plume mass and flux, continue with reviewed segmentation, background-clutter estimation, and a wind input with its uncertainty.</p>
+        <p>The <a href="user-guide.html#uncertainty">uncertainty guide</a> explains how σ<sub>RMN</sub>, background variability, IME, and wind enter that analysis.</p>
+      </section>
+
+      <section id="next">
+        <h2>Continue with Buenos Aires</h2>
+        <p>Explore the published landfill case from 12 January 2024 to see how EnMAP retrievals and provider-level EMIT and GHGSat products enter the same downstream analysis.</p>
+        <div class="related-links">
+          <a class="button" href="case-studies.html?case=buenos-aires-2024-01-12">Explore the case study</a>
+          <a class="button button--secondary" href="user-guide.html">Open the user guide</a>
+        </div>
+        <p>For executed publication examples, open the frozen <a href="https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/BA_plume_detection_scaled.ipynb">segmentation notebook</a> and <a href="https://github.com/AlFe23/hygas/blob/5b98cdcdce52c7d4d27f6260410ceae48d9bb407/notebooks/BA_plume_analysis_enmap_ghgsat_emit.ipynb">IME and flux notebook</a>. Adapt their recorded local paths and obtain the required data before running them.</p>
+        <p class="related-links"><a href="https://github.com/AlFe23/hygas/blob/develop/README.md">Repository instructions</a><a href="https://github.com/AlFe23/hygas/blob/develop/scripts/main.py">CLI source</a><a href="science.html">Scientific reference</a></p>
+      </section>
+    </article>
+  </div>
+</main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand"><a class="footer-wordmark" href="index.html">HyGAS</a><p>Hyperspectral Gas Analysis Suite</p></div>
+        <nav class="footer-links" aria-label="Footer navigation"><a href="get-started.html">Get started</a><a href="user-guide.html">User guide</a><a href="case-studies.html">Case studies</a><a href="science.html#cite">Cite the method</a><a href="science.html#about">About & contact</a><a href="https://github.com/AlFe23/hygas">GitHub ↗</a></nav>
+      </div>
+      <div class="footer-bottom"><p>Research supported by ASI CLEAR-UP. Imagery and products: ASI, DLR, Planet, NASA/JPL and GHGSat, as credited in each case.</p><p>Software: <a href="https://github.com/AlFe23/hygas/blob/develop/LICENSE">GPL-3.0</a> · <a href="science.html#paper">Scientific sources</a></p></div>
+    </div>
+  </footer>
+  <div class="visually-hidden" id="copy-feedback" role="status" aria-live="polite"></div>
+  <dialog class="image-dialog" id="image-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-toolbar"><p id="dialog-title">Scientific figure</p><button type="button" class="dialog-close" data-close-dialog aria-label="Close enlarged figure">Close ×</button></div>
+    <div class="dialog-body"><img id="dialog-image" alt=""></div>
+  </dialog>
+</body>
+</html>

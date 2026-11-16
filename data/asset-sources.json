@@ -1,0 +1,173 @@
+[
+  {
+    "path": "assets/images/hygas-logo.png",
+    "source": "logo/hygas_logo.png",
+    "sha256": "8585600e7394e4439ad13ee31c447c977f6eb7130e3a284f48826ad3b369b791",
+    "bytes": 1263264,
+    "description": "Existing HyGAS logo; unchanged original.",
+    "width": 1254,
+    "height": 1254
+  },
+  {
+    "path": "assets/images/plume-uncertainty.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sha256": "5792e15cdb91ab00f9331a8d4e644fe30927a23d44730d1842a064b796130484",
+    "bytes": 312921,
+    "sourceMember": "word/media/image8.png",
+    "description": "Figure 5: enhancement, instrument-only and total uncertainty; ppm·m.",
+    "width": 1694,
+    "height": 498
+  },
+  {
+    "path": "assets/images/background-matching.png",
+    "source": "igarss2026/presentazioni_Valerio/TH4.R11_Ferrari - HyGAS_completed_revAF_wCO2.pptx",
+    "sha256": "53472762b96050fa7a7e23afce0971de1a82d97d7072674e9193270c46ea68d6",
+    "bytes": 632639,
+    "sourceMember": "ppt/media/image13.png",
+    "description": "Slide 8: spectrally matched background selection; spectral distance is a z-score.",
+    "width": 1508,
+    "height": 492
+  },
+  {
+    "path": "assets/images/turkmenistan-prisma-enhancement.png",
+    "source": "Articoli_e_conferenze/Conferenza_ESRIN_OCT2026/Poster1/HyGAS_ESA_2026_A0_rev1_VP.pptx",
+    "sha256": "b5616f66a97d120fb1be942df266ad7f16282927e695791fdb39c3892d59401f",
+    "bytes": 508041,
+    "sourceMember": "ppt/media/image13.png",
+    "description": "PRISMA enhancement and plume contours; original ppm m display.",
+    "width": 1161,
+    "height": 1272
+  },
+  {
+    "path": "assets/images/turkmenistan-enmap-enhancement.png",
+    "source": "Articoli_e_conferenze/Conferenza_ESRIN_OCT2026/Poster1/HyGAS_ESA_2026_A0_rev1_VP.pptx",
+    "sha256": "d974fb190810339a6ef38db3670b91e5ff08b897a67fe94613a0e126136a1a19",
+    "bytes": 487672,
+    "sourceMember": "ppt/media/image14.png",
+    "description": "EnMAP enhancement and plume contours; original ppm m display.",
+    "width": 1161,
+    "height": 1272
+  },
+  {
+    "path": "assets/images/turkmenistan-ghgsat-enhancement.png",
+    "source": "Articoli_e_conferenze/Conferenza_ESRIN_OCT2026/Poster1/HyGAS_ESA_2026_A0_rev1_VP.pptx",
+    "sha256": "fff04691954f6d742b539d103a9a66e46e71ab34d1d38019c6a7206e18194101",
+    "bytes": 334931,
+    "sourceMember": "ppt/media/image15.png",
+    "description": "GHGSat enhancement and plume contours; original ppb display.",
+    "width": 1133,
+    "height": 1272
+  },
+  {
+    "path": "assets/images/framework-engine.png",
+    "source": "Articoli_e_conferenze/Conferenza_ESRIN_OCT2026/Poster1/HyGAS_ESA_2026_A0_rev1_VP.pptx",
+    "sha256": "aa785bf1ed56b317617d9fff709ba53705b6e02d4ea65f643c9ece30e82e4d87",
+    "bytes": 474183,
+    "sourceMember": "ppt/media/image8.png",
+    "description": "Conceptual HyGAS processing-engine illustration; not a quantitative output.",
+    "width": 530,
+    "height": 540
+  },
+  {
+    "path": "assets/downloads/hygas-esrin-2026-framework.pdf",
+    "source": "Articoli_e_conferenze/Conferenza_ESRIN_OCT2026/Poster1/HyGAS_ESA_2026_A0_rev1_VP.pdf",
+    "sha256": "a45591f6e5dc637886690f6f882d7e122ecc4d55853b03181abcb0b4d4f30f79",
+    "bytes": 1336508,
+    "description": "HyGAS framework and applications poster; original PDF."
+  },
+  {
+    "path": "assets/downloads/hygas-esrin-2026-beyond-snr.pdf",
+    "source": "Articoli_e_conferenze/Conferenza_ESRIN_OCT2026/Poster2/HyGAS_Beyond_SNR_ESA_2026_A0_rev1_VP_valAF.pdf",
+    "sha256": "64db65835bd3b0f73a27d928e94a36de13b928d1564e30827da3bca72f9f4c3e",
+    "bytes": 2212069,
+    "description": "Beyond SNR poster, supplied valAF version; original PDF."
+  },
+  {
+    "path": "assets/images/buenos-aires-january-enmap.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sourceMember": "word/media/image22.png",
+    "sha256": "4567ee0f9deb8c6a6f647d911db76e5db9994c62db35957f31ceacb5885973af",
+    "bytes": 727769,
+    "width": 1633,
+    "height": 624,
+    "description": "Archived paper panel; derived ppb display. Original pixels and labels preserved."
+  },
+  {
+    "path": "assets/images/buenos-aires-january-ghgsat.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sourceMember": "word/media/image23.png",
+    "sha256": "80e3425f34dec718544fd66595eed60a8b9a8d3d721c6c118bb0b9023dc73cb4",
+    "bytes": 452713,
+    "width": 1633,
+    "height": 624,
+    "description": "Archived paper panel; derived ppb display. Original pixels and labels preserved."
+  },
+  {
+    "path": "assets/images/buenos-aires-january-emit.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sourceMember": "word/media/image24.png",
+    "sha256": "105d1aff47ce590faaef819bec4eed79f622736825bcdeb0023c45f12d7b4c45",
+    "bytes": 577587,
+    "width": 1633,
+    "height": 624,
+    "description": "Archived paper panel; derived ppb display. Original pixels and labels preserved."
+  },
+  {
+    "path": "assets/images/pakistan-emit.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sourceMember": "word/media/image33.png",
+    "sha256": "d74febc281e6b9910834d020aca3481d14cb3fcb5080801920ed94a038bef037",
+    "bytes": 130368,
+    "width": 1632,
+    "height": 624,
+    "description": "Archived paper panel; derived ppb display. Original pixels and labels preserved."
+  },
+  {
+    "path": "assets/images/pakistan-ghgsat.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sourceMember": "word/media/image34.png",
+    "sha256": "67e6e15b027fb5e8c407bb77bdc7f78e33950200a03f0bdd16f183c44fd431e1",
+    "bytes": 111906,
+    "width": 1632,
+    "height": 624,
+    "description": "Archived paper panel; derived ppb display. Original pixels and labels preserved."
+  },
+  {
+    "path": "assets/images/buenos-aires-revisit-enmap.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sourceMember": "word/media/image35.png",
+    "sha256": "cc1934a499e0fdb79fed1b91d03903c617dd2387fc1ab23bd20958bed6cc5378",
+    "bytes": 542059,
+    "width": 1088,
+    "height": 429,
+    "description": "Archived paper panel; derived ppb display. Original pixels and labels preserved."
+  },
+  {
+    "path": "assets/images/buenos-aires-revisit-tanager.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/methane-4061227 - send to 2nd proof_VP_AF.docx",
+    "sourceMember": "word/media/image37.png",
+    "sha256": "2fe790096b79b2ee9ded950850596ceddcd282cd5ef698016af79c0c85d7630d",
+    "bytes": 405370,
+    "width": 1088,
+    "height": 420,
+    "description": "Archived paper panel; derived ppb display. Original pixels and labels preserved."
+  },
+  {
+    "path": "assets/images/hygas-graphical-abstract.jpg",
+    "source": "GA_repo_fixed.JPG",
+    "sha256": "b7ba260fd77ddc0035c5022b3ee782eaedc5d9d518d87eece342848ba7ac8164",
+    "bytes": 232040,
+    "description": "Exact graphical abstract displayed in the HyGAS README; published CH4 framework, with original ppb labels preserved.",
+    "width": 884,
+    "height": 677
+  },
+  {
+    "path": "assets/images/hygas-graphical-abstract.png",
+    "source": "Articoli_e_conferenze/mdpi_methane/GA/GA_AC_AF_final_pngs/Slide2.PNG",
+    "sha256": "41de59b8fa5cd442086be015af23615f2cc91a01be0ff512eeb25c4914c231d3",
+    "bytes": 595057,
+    "description": "User-selected white-background graphical abstract, Slide2.PNG; unchanged original, used in the homepage hero.",
+    "width": 907,
+    "height": 718
+  }
+]
